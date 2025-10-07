@@ -136,6 +136,23 @@ const Sidebar = () => {
               Users
             </Link>
           </li>
+           <li style={sidebarStyle.menuItem}>
+            <Link 
+              to="/admin/contact-details" 
+              style={sidebarStyle.menuLink}
+              onMouseEnter={(e) => {
+                e.target.parentNode.style.transform = 'translateX(8px)';
+                e.target.parentNode.style.background = 'rgba(255, 255, 255, 0.2)';
+              }}
+              onMouseLeave={(e) => {
+                e.target.parentNode.style.transform = 'translateX(0)';
+                e.target.parentNode.style.background = 'rgba(255, 255, 255, 0.1)';
+              }}
+            >
+              <SettingsIcon />
+              Contact Details
+            </Link>
+          </li>
           <li style={sidebarStyle.menuItem}>
             <Link 
               to="/admin/settings" 
@@ -153,6 +170,7 @@ const Sidebar = () => {
               Settings
             </Link>
           </li>
+          
         </ul>
       </div>
     </div>
