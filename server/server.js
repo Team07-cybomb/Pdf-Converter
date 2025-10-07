@@ -1,19 +1,34 @@
-// Import express
 const express = require("express");
+const mongoose = require("mongoose");
+const dotenv = require("dotenv");
+const cors = require("cors");
 
-// Create an express app
+const userRoutes = require("./routes/userRoutes");
+const adminRoutes = require("./routes/adminRoutes");
+
+dotenv.config();
+
 const app = express();
 
-// Middleware to parse JSON data
+// Middleware
 app.use(express.json());
 
-// Default route
-app.get("/", (req, res) => {
-  res.send("Welcome to Express.js Backend!");
-});
+// CORS setup
+app.use(cors({
+  origin: "http://localhost:3000",
+  methods: ["GET", "POST", "PUT", "DELETE"],
+  credentials: true
+}));
+
+// Routes
+app.use("/api/auth", userRoutes);               // user auth// create admin
+app.use("/api/admin", adminRoutes);             // login & get all admins
+
+// MongoDB connect
+mongoose.connect(process.env.MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true })
+  .then(() => console.log("MongoDB connected"))
+  .catch((err) => console.error(err));
 
 // Start server
-const PORT = 5000;
-app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
-});
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));

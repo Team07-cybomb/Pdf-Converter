@@ -5,62 +5,63 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from '@/components/ui/use-toast';
-import { useAuth } from '@/contexts/AuthContext';
 import { Helmet } from 'react-helmet';
-import { useNavigate, Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import { useAuth } from '@/contexts/AuthContext';
 
 const LoginPage = () => {
   const [isLogin, setIsLogin] = useState(true);
-  const [formData, setFormData] = useState({
-    email: '',
-    password: '',
-    name: ''
-  });
-  const { login, register } = useAuth();
+  const [formData, setFormData] = useState({ email: '', password: '', name: '' });
+  const { loginBackend } = useAuth(); // use backend login
   const navigate = useNavigate();
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    let result;
-    if (isLogin) {
-      result = login(formData.email, formData.password);
-      if (result.success) {
+
+    try {
+      const API_URL = 'http://localhost:5000/api/auth';
+      let url = isLogin ? `${API_URL}/login` : `${API_URL}/register`;
+
+      if (!isLogin && (!formData.name || !formData.email || !formData.password)) {
         toast({
-          title: "Welcome back! 🎉",
-          description: "You've successfully logged in",
-        });
-        navigate('/dashboard');
-      } else {
-        toast({
-          title: "Login failed",
-          description: result.error,
-          variant: "destructive"
-        });
-      }
-    } else {
-      if (!formData.name || !formData.email || !formData.password) {
-        toast({
-          title: "Missing information",
-          description: "Please fill in all fields",
-          variant: "destructive"
+          title: 'Missing information',
+          description: 'Please fill in all fields',
+          variant: 'destructive'
         });
         return;
       }
-      
-      result = register(formData.email, formData.password, formData.name);
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData)
+      });
+
+      const result = await response.json();
+
       if (result.success) {
+        // update frontend state with backend response
+        loginBackend(result.admin || result.user, result.token || '');
         toast({
-          title: "Account created! 🎉",
-          description: "Welcome to PDF Pro",
+          title: isLogin ? 'Welcome back! 🎉' : 'Account created! 🎉',
+          description: result.message || (isLogin ? 'Login successful' : 'Registration successful')
         });
-        navigate('/dashboard');
+        navigate('/'); // redirect
+        window.location.reload(); // reload page to show profile
       } else {
         toast({
-          title: "Registration failed",
-          description: result.error,
-          variant: "destructive"
+          title: 'Error',
+          description: result.error || 'Something went wrong',
+          variant: 'destructive'
         });
       }
+    } catch (error) {
+      console.error('Server error:', error);
+      toast({
+        title: 'Server Error',
+        description: 'Unable to connect to backend',
+        variant: 'destructive'
+      });
     }
   };
 
@@ -68,26 +69,22 @@ const LoginPage = () => {
     <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-slate-50 via-purple-50 to-blue-50">
       <Helmet>
         <title>{isLogin ? 'Login' : 'Sign Up'} - PDF Pro</title>
-        <meta name="description" content="Login or register to access your PDF Pro account" />
       </Helmet>
-      
+
       <motion.div
         initial={{ opacity: 0, scale: 0.9 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="glass-effect rounded-2xl p-8 max-w-md w-full"
+        className="glass-effect rounded-2xl p-8 max-w-md w-full shadow-lg bg-white/70 backdrop-blur-lg border border-white/30"
       >
         <Link to="/" className="flex items-center justify-center mb-8">
-          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-purple-600 to-pink-600 flex items-center justify-center">
+          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-purple-600 to-pink-600 flex items-center justify-center shadow-md">
             <FileText className="h-10 w-10 text-white" />
           </div>
         </Link>
 
-        <h1 className="text-3xl font-bold text-center gradient-text mb-2">
+        <h1 className="text-3xl font-bold text-center bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent mb-2">
           {isLogin ? 'Welcome Back!' : 'Create Account'}
         </h1>
-        <p className="text-center text-gray-600 mb-8">
-          {isLogin ? 'Login to access your PDF tools' : 'Join PDF Pro today'}
-        </p>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           {!isLogin && (
@@ -137,10 +134,7 @@ const LoginPage = () => {
             </div>
           </div>
 
-          <Button
-            type="submit"
-            className="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white"
-          >
+          <Button type="submit" className="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white font-semibold">
             {isLogin ? 'Login' : 'Create Account'}
           </Button>
         </form>
