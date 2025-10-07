@@ -42,7 +42,7 @@ const ContactPage = () => {
             <div>
               <h3 className="text-xl font-semibold">Email Us</h3>
               <p className="text-gray-600">For support, sales, or any other inquiries.</p>
-              <a href="mailto:hello@pdfpro.com" className="text-purple-600 font-medium">hello@pdfpro.com</a>
+              <a href="mailto:hello@pdfpro.com" className="text-purple-600 font-medium">pdfpro.in</a>
             </div>
           </div>
           <div className="flex items-start gap-4">
@@ -52,7 +52,7 @@ const ContactPage = () => {
             <div>
               <h3 className="text-xl font-semibold">Call Us</h3>
               <p className="text-gray-600">Mon-Fri from 9am to 5pm.</p>
-              <a href="tel:+1234567890" className="text-purple-600 font-medium">+1 (234) 567-890</a>
+              <a href="tel:+1234567890" className="text-purple-600 font-medium">+91 9715092104</a>
             </div>
           </div>
           <div className="flex items-start gap-4">
@@ -61,7 +61,9 @@ const ContactPage = () => {
             </div>
             <div>
               <h3 className="text-xl font-semibold">Our Office</h3>
-              <p className="text-gray-600">123 Innovation Drive, Tech City, 12345</p>
+              <p className="text-gray-600">Cybomb Technologies LLP
+Prime Plaza No.54/1, 1st street, Sripuram colony,
+St.Thomas Mount, Chennai, India</p>
             </div>
           </div>
         </motion.div>
