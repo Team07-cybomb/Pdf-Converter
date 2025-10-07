@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { FileText, User, LogOut, LayoutDashboard, Wrench, FolderOpen, CreditCard, Shield } from 'lucide-react';
+import { FileText, LogOut, LayoutDashboard, Wrench, FolderOpen, CreditCard, Shield } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import {
@@ -23,18 +23,20 @@ const Header = () => {
     navigate('/');
   };
 
-  const navLinks = user ? [
-    { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { path: '/tools', label: 'Tools', icon: Wrench },
-    { path: '/files', label: 'My Files', icon: FolderOpen },
-    { path: '/pricing', label: 'Pricing', icon: CreditCard },
-    ...(user.role === 'admin' ? [{ path: '/admin', label: 'Admin', icon: Shield }] : []),
-  ] : [
-    { path: '/', label: 'Home' },
-    { path: '/tools', label: 'Tools' },
-    { path: '/pricing', label: 'Pricing' },
-    { path: '/faq', label: 'FAQ' },
-  ];
+  const navLinks = user
+    ? [
+        { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+        { path: '/tools', label: 'Tools', icon: Wrench },
+        { path: '/files', label: 'My Files', icon: FolderOpen },
+        { path: '/pricing', label: 'Pricing', icon: CreditCard },
+        ...(user.role === 'admin' ? [{ path: '/admin', label: 'Admin', icon: Shield }] : []),
+      ]
+    : [
+        { path: '/', label: 'Home' },
+        { path: '/tools', label: 'Tools' },
+        { path: '/pricing', label: 'Pricing' },
+        { path: '/faq', label: 'FAQ' },
+      ];
 
   return (
     <motion.header
@@ -44,7 +46,7 @@ const Header = () => {
     >
       <div className="flex items-center justify-between px-6 py-3">
         <div className="flex items-center gap-6">
-          <Link to={user ? "/dashboard" : "/"} className="flex items-center gap-2">
+          <Link to={user ? "/" : "/"} className="flex items-center gap-2">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-600 to-pink-600 flex items-center justify-center">
               <FileText className="h-6 w-6 text-white" />
             </div>
@@ -73,8 +75,8 @@ const Header = () => {
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" size="icon" className="rounded-full">
-                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
-                      <User className="h-5 w-5 text-white" />
+                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-semibold text-lg">
+                      {user?.name ? user.name.charAt(0).toUpperCase() : 'U'}
                     </div>
                   </Button>
                 </DropdownMenuTrigger>
