@@ -8,7 +8,8 @@ const cors = require("cors");
 const userRoutes = require("./routes/userRoutes");
 const adminRoutes = require("./routes/adminRoutes");
 const contactRoutes = require("./routes/contactRoutes");
-
+const OrganizeRoutes = require('./routes/tools-routes/Organize/Organize-Route');
+const SecurityRoutes = require('./routes/tools-routes/Security/Security-Routes');
 const app = express();
 
 // Middleware
@@ -25,6 +26,9 @@ app.use(cors({
 app.use("/api/auth", userRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/contact", contactRoutes);
+// Main API route for PDF tools
+app.use('/api/organize', OrganizeRoutes);
+app.use('/api/security', SecurityRoutes);
 
 // MongoDB connect
 mongoose.connect(process.env.MONGO_URI)
