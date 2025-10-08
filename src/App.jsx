@@ -46,6 +46,7 @@ import AdminProtectedRoute from "@/components/AdminProtectedRoute";
 
 // ✨ Animations
 import { AnimatePresence } from "framer-motion";
+import ContactUser from "./pages/admin/Contact";
 
 // ❌ 404 Page
 const NotFoundPage = () => (
@@ -121,6 +122,16 @@ function AppContent() {
               </AdminProtectedRoute>
             }
           />
+           <Route
+            path="/admin/contact-details"
+            element={
+              <AdminProtectedRoute>
+                <ContactUser/>
+              </AdminProtectedRoute>
+            }
+          />
+
+         
 
           {/* ================= PUBLIC & USER ROUTES ================= */}
           <Route

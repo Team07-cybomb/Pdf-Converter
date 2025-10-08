@@ -5,6 +5,7 @@ const cors = require("cors");
 
 const userRoutes = require("./routes/userRoutes");
 const adminRoutes = require("./routes/adminRoutes");
+const contactRoutes = require("./routes/contactRoutes");
 
 dotenv.config();
 
@@ -22,7 +23,8 @@ app.use(cors({
 
 // Routes
 app.use("/api/auth", userRoutes);               // user auth// create admin
-app.use("/api/admin", adminRoutes);             // login & get all admins
+app.use("/api/admin", adminRoutes); 
+app.use("/api/contact", contactRoutes);           // login & get all admins
 
 // MongoDB connect
 mongoose.connect(process.env.MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true })
