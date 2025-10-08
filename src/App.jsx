@@ -27,6 +27,8 @@ import SecurityPage from "@/components/SecurityPage";
 import PrivacyPolicyPage from "@/components/PrivacyPolicyPage";
 import TermsPage from "@/components/TermsPage";
 import CookiesPage from "@/components/CookiesPage";
+import ScrollToTop from "./components/ScrollToTop";
+
 
 // 👤 User Dashboard (from components folder)
 import UserDashboard from "@/components/Dashboard";
@@ -66,8 +68,13 @@ function AppContent() {
           name="description"
           content="AI-powered PDF editing, conversion, compression, OCR, and e-signature."
         />
+        {/* <link rel="icon" href="img" />
+        <link rel="apple-touch-icon" href="https://cdn.jsdelivr.net/npm/twemoji@11.3.0/2/svg/1f4c4.svg" /> */}
+        <link rel="icon" href="/image (1).png" type="image/png" />
+        <link rel="apple-touch-icon" href="/image (1).png" />
+        <link rel="shortcut icon" href="/image (1).png" type="image/png" />
       </Helmet>
-
+      <ScrollToTop/>
       <AnimatePresence mode="wait">
         <Routes location={location} key={location.pathname}>
           {/* ================= ADMIN ROUTES ================= */}
@@ -148,7 +155,7 @@ function AppContent() {
                     <Route path="/privacy" element={<PrivacyPolicyPage />} />
                     <Route path="/terms" element={<TermsPage />} />
                     <Route path="/cookies" element={<CookiesPage />} />
-
+                    
                     {/* Protected User Pages */}
                     <Route
                       path="/dashboard"
@@ -177,6 +184,7 @@ function AppContent() {
 
                     {/* Not Found */}
                     <Route path="*" element={<NotFoundPage />} />
+                    
                   </Routes>
                 </main>
                 <Footer />
