@@ -8,11 +8,21 @@ import { toast } from '@/components/ui/use-toast';
 import { Helmet } from 'react-helmet';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
+import ForgotPasswordForm from './ForgotPasswordForm'; // Import the new component
 
 const LoginPage = () => {
   const [isLogin, setIsLogin] = useState(true);
-  const [formData, setFormData] = useState({ email: '', password: '', name: '' });
-  const { loginBackend } = useAuth(); // use backend login
+  const [forgotPassword, setForgotPassword] = useState(false);
+  const [forgotPasswordStep, setForgotPasswordStep] = useState(1);
+  const [formData, setFormData] = useState({ 
+    email: '', 
+    password: '', 
+    name: '',
+    otp: '',
+    newPassword: '',
+    confirmPassword: ''
+  });
+  const { loginBackend } = useAuth();
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
@@ -20,7 +30,7 @@ const LoginPage = () => {
 
     try {
       const API_URL = 'http://localhost:5000/api/auth';
-      let url = isLogin ? `${API_URL}/login` : `${API_URL}/register`;
+      const url = isLogin ? `${API_URL}/login` : `${API_URL}/register`;
 
       if (!isLogin && (!formData.name || !formData.email || !formData.password)) {
         toast({
@@ -40,14 +50,13 @@ const LoginPage = () => {
       const result = await response.json();
 
       if (result.success) {
-        // update frontend state with backend response
         loginBackend(result.admin || result.user, result.token || '');
         toast({
           title: isLogin ? 'Welcome back! 🎉' : 'Account created! 🎉',
           description: result.message || (isLogin ? 'Login successful' : 'Registration successful')
         });
-        navigate('/'); // redirect
-        window.location.reload(); // reload page to show profile
+        navigate('/');
+        window.location.reload();
       } else {
         toast({
           title: 'Error',
@@ -65,27 +74,15 @@ const LoginPage = () => {
     }
   };
 
-  return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-slate-50 via-purple-50 to-blue-50">
-      <Helmet>
-        <title>{isLogin ? 'Login' : 'Sign Up'} - PDF Pro</title>
-      </Helmet>
+  const handleBackToLogin = () => {
+    setForgotPassword(false);
+    setForgotPasswordStep(1);
+    setFormData({ email: '', password: '', name: '', otp: '', newPassword: '', confirmPassword: '' });
+  };
 
-      <motion.div
-        initial={{ opacity: 0, scale: 0.9 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className="glass-effect rounded-2xl p-8 max-w-md w-full shadow-lg bg-white/70 backdrop-blur-lg border border-white/30"
-      >
-        <Link to="/" className="flex items-center justify-center mb-8">
-          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-purple-600 to-pink-600 flex items-center justify-center shadow-md">
-            <FileText className="h-10 w-10 text-white" />
-          </div>
-        </Link>
-
-        <h1 className="text-3xl font-bold text-center bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent mb-2">
-          {isLogin ? 'Welcome Back!' : 'Create Account'}
-        </h1>
-
+  const renderLoginRegisterForm = () => {
+    return (
+      <>
         <form onSubmit={handleSubmit} className="space-y-4">
           {!isLogin && (
             <div className="space-y-2">
@@ -134,6 +131,18 @@ const LoginPage = () => {
             </div>
           </div>
 
+          {isLogin && (
+            <div className="text-right">
+              <button
+                type="button"
+                onClick={() => setForgotPassword(true)}
+                className="text-sm text-purple-600 hover:text-purple-700 font-medium"
+              >
+                Forgot your password?
+              </button>
+            </div>
+          )}
+
           <Button type="submit" className="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white font-semibold">
             {isLogin ? 'Login' : 'Create Account'}
           </Button>
@@ -147,6 +156,42 @@ const LoginPage = () => {
             {isLogin ? "Don't have an account? Sign up" : 'Already have an account? Login'}
           </button>
         </div>
+      </>
+    );
+  };
+
+  return (
+    <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-slate-50 via-purple-50 to-blue-50">
+      <Helmet>
+        <title>{forgotPassword ? 'Reset Password' : (isLogin ? 'Login' : 'Sign Up')} - PDF Pro</title>
+      </Helmet>
+
+      <motion.div
+        initial={{ opacity: 0, scale: 0.9 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="glass-effect rounded-2xl p-8 max-w-md w-full shadow-lg bg-white/70 backdrop-blur-lg border border-white/30"
+      >
+        <Link to="/" className="flex items-center justify-center mb-8">
+          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-purple-600 to-pink-600 flex items-center justify-center shadow-md">
+            <FileText className="h-10 w-10 text-white" />
+          </div>
+        </Link>
+
+        <h1 className="text-3xl font-bold text-center bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent mb-2">
+          {forgotPassword ? 'Reset Password' : (isLogin ? 'Welcome Back!' : 'Create Account')}
+        </h1>
+
+        {forgotPassword ? (
+          <ForgotPasswordForm
+            formData={formData}
+            setFormData={setFormData}
+            forgotPasswordStep={forgotPasswordStep}
+            setForgotPasswordStep={setForgotPasswordStep}
+            handleBackToLogin={handleBackToLogin}
+          />
+        ) : (
+          renderLoginRegisterForm()
+        )}
       </motion.div>
     </div>
   );

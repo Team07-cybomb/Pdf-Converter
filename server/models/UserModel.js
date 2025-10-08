@@ -7,6 +7,8 @@ const UserSchema = new mongoose.Schema({
   role: { type: String, default: "user" }, // 'admin' or 'user'
   plan: { type: String, default: "free" },
   createdAt: { type: Date, default: Date.now },
+  resetPasswordToken: String,
+  resetPasswordExpires: Date,
 });
 
 module.exports = mongoose.model("User", UserSchema);
