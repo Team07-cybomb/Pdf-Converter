@@ -3,9 +3,27 @@ import { motion } from "framer-motion";
 import { Merge, Split, RotateCw } from "lucide-react";
 
 const tools = [
-  { id: "merge", name: "Merge PDFs", description: "Combine multiple PDFs into one", icon: Merge, color: "from-blue-500 to-cyan-500" },
-  { id: "split", name: "Split PDF", description: "Extract pages or split by range", icon: Split, color: "from-purple-500 to-pink-500" },
-  { id: "rotate", name: "Rotate Pages", description: "Rotate and reorder PDF pages", icon: RotateCw, color: "from-yellow-500 to-orange-500" },
+  {
+    id: "merge",
+    name: "Merge PDFs",
+    description: "Combine multiple PDFs into one",
+    icon: Merge,
+    color: "from-blue-500 to-cyan-500",
+  },
+  {
+    id: "split",
+    name: "Split PDF",
+    description: "Extract pages or split by range",
+    icon: Split,
+    color: "from-purple-500 to-pink-500",
+  },
+  {
+    id: "rotate",
+    name: "Rotate Pages",
+    description: "Rotate and reorder PDF pages",
+    icon: RotateCw,
+    color: "from-yellow-500 to-orange-500",
+  },
 ];
 
 const OrganizeTools = ({ handleToolClick }) => {
@@ -23,7 +41,9 @@ const OrganizeTools = ({ handleToolClick }) => {
             onClick={() => handleToolClick(tool)}
             className="glass-effect rounded-2xl p-6 cursor-pointer transition-all group"
           >
-            <div className={`w-14 h-14 rounded-xl bg-gradient-to-br ${tool.color} flex items-center justify-center mb-4`}>
+            <div
+              className={`w-14 h-14 rounded-xl bg-gradient-to-br ${tool.color} flex items-center justify-center mb-4`}
+            >
               <Icon className="h-7 w-7 text-white" />
             </div>
             <h3 className="text-lg font-bold mb-2">{tool.name}</h3>
