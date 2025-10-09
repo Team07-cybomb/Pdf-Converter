@@ -17,7 +17,7 @@ import LoginPage from "@/components/LoginPage";
 import ToolsPage from "@/components/ToolsPage";
 import BillingPage from "@/components/BillingPage";
 import FilesPage from "@/components/FilesPage";
-import EditPdfPage from "@/components/EditPdfPage";
+//import EditPdfPage from "@/components/EditPdfPage";
 import FaqPage from "@/components/FaqPage";
 import AboutPage from "@/components/AboutPage";
 import ContactPage from "@/components/ContactPage";
@@ -28,7 +28,7 @@ import PrivacyPolicyPage from "@/components/PrivacyPolicyPage";
 import TermsPage from "@/components/TermsPage";
 import CookiesPage from "@/components/CookiesPage";
 import ScrollToTop from "./components/ScrollToTop";
-
+import EditTools from "./pages/tools/EditTools";
 
 // 👤 User Dashboard (from components folder)
 import UserDashboard from "@/components/Dashboard";
@@ -169,7 +169,7 @@ function AppContent() {
                       path="/tools/edit"
                       element={
                         <ProtectedRoute>
-                          <EditPdfPage />
+                          <EditTools />
                         </ProtectedRoute>
                       }
                     />
