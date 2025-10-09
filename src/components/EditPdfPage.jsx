@@ -41,7 +41,7 @@ const EditPdfPage = () => {
           animate={{ opacity: 1, y: 0 }}
           className="w-full"
         >
-          <h1 className="text-4xl font-bold gradient-text mb-4">PDF Editor ✍️</h1>
+          <h1 className="text-4xl font-bold gradient-text mb-4">Test PDF Editor ✍️</h1>
           <p className="text-muted-foreground mb-8">Upload your PDF to start editing.</p>
           <FileUpload onFileUploaded={handleFileUploaded} />
         </motion.div>
