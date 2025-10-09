@@ -2,12 +2,39 @@
 
 import React, { useState } from "react";
 import { motion } from "framer-motion";
-import { Merge, Split, RotateCw, Upload, Download, ChevronDown, Eye, EyeOff } from "lucide-react";
+import {
+  Merge,
+  Split,
+  RotateCw,
+  Upload,
+  Download,
+  ChevronDown,
+  Eye,
+  EyeOff,
+} from "lucide-react";
 
 const tools = [
-  { id: "merge", name: "Merge PDFs", description: "Combine multiple PDFs into one", icon: Merge, color: "from-blue-500 to-cyan-500" },
-  { id: "split", name: "Split PDF", description: "Extract pages or split by range", icon: Split, color: "from-purple-500 to-pink-500" },
-  { id: "rotate", name: "Rotate Pages", description: "Rotate and reorder PDF pages", icon: RotateCw, color: "from-yellow-500 to-orange-500" },
+  {
+    id: "merge",
+    name: "Merge PDFs",
+    description: "Combine multiple PDFs into one",
+    icon: Merge,
+    color: "from-blue-500 to-cyan-500",
+  },
+  {
+    id: "split",
+    name: "Split PDF",
+    description: "Extract pages or split by range",
+    icon: Split,
+    color: "from-purple-500 to-pink-500",
+  },
+  {
+    id: "rotate",
+    name: "Rotate Pages",
+    description: "Rotate and reorder PDF pages",
+    icon: RotateCw,
+    color: "from-yellow-500 to-orange-500",
+  },
 ];
 
 const OrganizeTools = () => {
@@ -17,7 +44,7 @@ const OrganizeTools = () => {
   const [downloadUrl, setDownloadUrl] = useState(null);
   const [error, setError] = useState(null);
   const [splitRange, setSplitRange] = useState("");
-  const [rotationSide, setRotationSide] = useState('90');
+  const [rotationSide, setRotationSide] = useState("90");
   const [showPreview, setShowPreview] = useState(false);
 
   const handleToolClick = (tool) => {
@@ -26,14 +53,14 @@ const OrganizeTools = () => {
     setDownloadUrl(null);
     setError(null);
     setSplitRange("");
-    setRotationSide('90');
+    setRotationSide("90");
     setShowPreview(false);
   };
 
   const handleFileChange = (e) => {
     setFiles(Array.from(e.target.files));
   };
-  
+
   const handleSplitRangeChange = (e) => {
     setSplitRange(e.target.value);
   };
@@ -43,36 +70,41 @@ const OrganizeTools = () => {
   };
 
   const handleProcessPDF = async () => {
-    if (selectedTool.id === 'split' && !splitRange) {
-        setError('Please enter the pages to split.');
-        return;
+    if (selectedTool.id === "split" && !splitRange) {
+      setError("Please enter the pages to split.");
+      return;
     }
-    if (selectedTool.id === 'rotate' && !rotationSide) {
-        setError('Please select a rotation side.');
-        return;
+    if (selectedTool.id === "rotate" && !rotationSide) {
+      setError("Please select a rotation side.");
+      return;
     }
 
     setProcessing(true);
     setError(null);
 
     const formData = new FormData();
-    files.forEach(file => {
+    files.forEach((file) => {
       formData.append("files", file);
     });
 
     const queryParams = new URLSearchParams();
-    if (selectedTool.id === 'split' && splitRange) {
-      queryParams.append('pages', splitRange);
+    if (selectedTool.id === "split" && splitRange) {
+      queryParams.append("pages", splitRange);
     }
-    if (selectedTool.id === 'rotate' && rotationSide) {
-        queryParams.append('side', rotationSide);
+    if (selectedTool.id === "rotate" && rotationSide) {
+      queryParams.append("side", rotationSide);
     }
-    
+
     try {
-      const response = await fetch(`http://localhost:5000/api/organize/${selectedTool.id}?${queryParams.toString()}`, {
-        method: "POST",
-        body: formData,
-      });
+      const response = await fetch(
+        `http://localhost:5000/api/organize/${
+          selectedTool.id
+        }?${queryParams.toString()}`,
+        {
+          method: "POST",
+          body: formData,
+        }
+      );
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -82,7 +114,6 @@ const OrganizeTools = () => {
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       setDownloadUrl(url);
-
     } catch (err) {
       console.error("Processing failed:", err);
       setError("Failed to process PDF. " + err.message);
@@ -99,26 +130,34 @@ const OrganizeTools = () => {
         className="glass-effect rounded-2xl p-8 max-w-4xl mx-auto"
       >
         <div className="flex items-center mb-6">
-          <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${selectedTool.color} flex items-center justify-center mr-4`}>
+          <div
+            className={`w-12 h-12 rounded-xl bg-gradient-to-br ${selectedTool.color} flex items-center justify-center mr-4`}
+          >
             <selectedTool.icon className="h-6 w-6 text-white" />
           </div>
           <div>
             <h2 className="text-xl font-bold">{selectedTool.name}</h2>
-            <p className="text-sm text-muted-foreground">{selectedTool.description}</p>
+            <p className="text-sm text-muted-foreground">
+              {selectedTool.description}
+            </p>
           </div>
         </div>
 
         {downloadUrl ? (
           <div className="text-center mt-8">
             <h3 className="text-lg font-bold mb-4">Your PDF is ready! 🎉</h3>
-            
+
             {/* Preview Toggle */}
             <div className="flex justify-center mb-4">
               <button
                 onClick={() => setShowPreview(!showPreview)}
                 className="inline-flex items-center px-4 py-2 rounded-full text-sm font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
               >
-                {showPreview ? <EyeOff className="h-4 w-4 mr-2" /> : <Eye className="h-4 w-4 mr-2" />}
+                {showPreview ? (
+                  <EyeOff className="h-4 w-4 mr-2" />
+                ) : (
+                  <Eye className="h-4 w-4 mr-2" />
+                )}
                 {showPreview ? "Hide Preview" : "Show Preview"}
               </button>
             </div>
@@ -126,7 +165,9 @@ const OrganizeTools = () => {
             {/* PDF Preview */}
             {showPreview && (
               <div className="mb-6 p-4 border border-gray-300 rounded-lg bg-white">
-                <h4 className="text-sm font-semibold mb-3 text-center">PDF Preview</h4>
+                <h4 className="text-sm font-semibold mb-3 text-center">
+                  PDF Preview
+                </h4>
                 <div className="flex justify-center">
                   <iframe
                     src={downloadUrl}
@@ -135,7 +176,8 @@ const OrganizeTools = () => {
                   />
                 </div>
                 <p className="text-xs text-muted-foreground mt-2 text-center">
-                  Note: Preview may not work in all browsers. Download to view the full document.
+                  Note: Preview may not work in all browsers. Download to view
+                  the full document.
                 </p>
               </div>
             )}
@@ -158,7 +200,7 @@ const OrganizeTools = () => {
                   setDownloadUrl(null);
                   setFiles([]);
                   setSplitRange("");
-                  setRotationSide('90');
+                  setRotationSide("90");
                   setShowPreview(false);
                 }}
                 className="px-6 py-2 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-full transition-colors"
@@ -178,32 +220,39 @@ const OrganizeTools = () => {
                 Click to upload or drag and drop
               </p>
               <p className="text-xs text-muted-foreground mt-1">
-                {selectedTool.id === 'merge' ? "PDF files" : "A single PDF file"}
+                {selectedTool.id === "merge"
+                  ? "PDF files"
+                  : "A single PDF file"}
               </p>
               <input
                 id="file-upload"
                 type="file"
-                multiple={selectedTool.id === 'merge'}
+                multiple={selectedTool.id === "merge"}
                 onChange={handleFileChange}
                 className="hidden"
                 accept=".pdf"
               />
             </label>
-            
+
             {files.length > 0 && (
               <div className="mt-4">
                 <p className="text-sm font-semibold mb-2">Selected Files:</p>
                 <ul className="list-disc pl-5">
                   {files.map((file, index) => (
-                    <li key={index} className="text-sm text-muted-foreground">{file.name}</li>
+                    <li key={index} className="text-sm text-muted-foreground">
+                      {file.name}
+                    </li>
                   ))}
                 </ul>
               </div>
             )}
 
-            {selectedTool.id === 'split' && (
+            {selectedTool.id === "split" && (
               <div className="mt-4">
-                <label className="block text-sm font-semibold mb-2" htmlFor="page-range">
+                <label
+                  className="block text-sm font-semibold mb-2"
+                  htmlFor="page-range"
+                >
                   Pages to split (e.g., 1,3-5)
                 </label>
                 <input
@@ -216,37 +265,48 @@ const OrganizeTools = () => {
                 />
               </div>
             )}
-            
-            {selectedTool.id === 'rotate' && (
-                <div className="mt-4">
-                    <label className="block text-sm font-semibold mb-2" htmlFor="rotation-side">
-                        Rotation direction
-                    </label>
-                    <div className="relative">
-                        <select
-                            id="rotation-side"
-                            value={rotationSide}
-                            onChange={handleRotationChange}
-                            className="w-full appearance-none px-4 py-2 rounded-md border border-gray-300 text-gray-900 bg-white"
-                        >
-                            <option value="90">Rotate Right (90°)</option>
-                            <option value="-90">Rotate Left (-90°)</option>
-                            <option value="180">Rotate 180°</option>
-                        </select>
-                        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700">
-                            <ChevronDown className="h-4 w-4" />
-                        </div>
-                    </div>
+
+            {selectedTool.id === "rotate" && (
+              <div className="mt-4">
+                <label
+                  className="block text-sm font-semibold mb-2"
+                  htmlFor="rotation-side"
+                >
+                  Rotation direction
+                </label>
+                <div className="relative">
+                  <select
+                    id="rotation-side"
+                    value={rotationSide}
+                    onChange={handleRotationChange}
+                    className="w-full appearance-none px-4 py-2 rounded-md border border-gray-300 text-gray-900 bg-white"
+                  >
+                    <option value="90">Rotate Right (90°)</option>
+                    <option value="-90">Rotate Left (-90°)</option>
+                    <option value="180">Rotate 180°</option>
+                  </select>
+                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700">
+                    <ChevronDown className="h-4 w-4" />
+                  </div>
                 </div>
+              </div>
             )}
-            
+
             {error && <p className="text-red-500 text-sm mt-4">{error}</p>}
-            
+
             <button
               onClick={handleProcessPDF}
-              disabled={files.length === 0 || processing || (selectedTool.id === 'split' && !splitRange) || (selectedTool.id === 'rotate' && !rotationSide)}
+              disabled={
+                files.length === 0 ||
+                processing ||
+                (selectedTool.id === "split" && !splitRange) ||
+                (selectedTool.id === "rotate" && !rotationSide)
+              }
               className={`w-full mt-6 px-6 py-3 rounded-full font-bold text-white transition-all ${
-                files.length === 0 || processing || (selectedTool.id === 'split' && !splitRange) || (selectedTool.id === 'rotate' && !rotationSide)
+                files.length === 0 ||
+                processing ||
+                (selectedTool.id === "split" && !splitRange) ||
+                (selectedTool.id === "rotate" && !rotationSide)
                   ? "bg-gray-400 cursor-not-allowed"
                   : "bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600"
               }`}
@@ -281,11 +341,15 @@ const OrganizeTools = () => {
               onClick={() => handleToolClick(tool)}
               className="glass-effect rounded-2xl p-6 cursor-pointer transition-all group h-full flex flex-col"
             >
-              <div className={`w-14 h-14 rounded-xl bg-gradient-to-br ${tool.color} flex items-center justify-center mb-4`}>
+              <div
+                className={`w-14 h-14 rounded-xl bg-gradient-to-br ${tool.color} flex items-center justify-center mb-4`}
+              >
                 <Icon className="h-7 w-7 text-white" />
               </div>
               <h3 className="text-lg font-bold mb-2">{tool.name}</h3>
-              <p className="text-sm text-muted-foreground flex-grow">{tool.description}</p>
+              <p className="text-sm text-muted-foreground flex-grow">
+                {tool.description}
+              </p>
             </motion.div>
           );
         })}
