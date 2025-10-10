@@ -1,26 +1,27 @@
-import React, { useState } from 'react';
-import { motion } from 'framer-motion';
-import { FileText, Mail, Lock, User } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { toast } from '@/components/ui/use-toast';
-import { Helmet } from 'react-helmet';
-import { Link, useNavigate } from 'react-router-dom';
-import { useAuth } from '@/contexts/AuthContext';
-import ForgotPasswordForm from './ForgotPasswordForm'; // Import the new component
+import React, { useState } from "react";
+import { motion } from "framer-motion";
+import { FileText, Mail, Lock, User } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { toast } from "@/components/ui/use-toast";
+import { Helmet } from "react-helmet";
+import { Link, useNavigate } from "react-router-dom";
+import { useAuth } from "@/contexts/AuthContext";
+import ForgotPasswordForm from "./ForgotPasswordForm"; // Import the new component
+const API_URL1 = import.meta.env.VITE_API_URL;
 
 const LoginPage = () => {
   const [isLogin, setIsLogin] = useState(true);
   const [forgotPassword, setForgotPassword] = useState(false);
   const [forgotPasswordStep, setForgotPasswordStep] = useState(1);
-  const [formData, setFormData] = useState({ 
-    email: '', 
-    password: '', 
-    name: '',
-    otp: '',
-    newPassword: '',
-    confirmPassword: ''
+  const [formData, setFormData] = useState({
+    email: "",
+    password: "",
+    name: "",
+    otp: "",
+    newPassword: "",
+    confirmPassword: "",
   });
   const { loginBackend } = useAuth();
   const navigate = useNavigate();
@@ -29,47 +30,52 @@ const LoginPage = () => {
     e.preventDefault();
 
     try {
-      const API_URL = 'http://localhost:5000/api/auth';
+      const API_URL = `${API_URL1}/api/auth`;
       const url = isLogin ? `${API_URL}/login` : `${API_URL}/register`;
 
-      if (!isLogin && (!formData.name || !formData.email || !formData.password)) {
+      if (
+        !isLogin &&
+        (!formData.name || !formData.email || !formData.password)
+      ) {
         toast({
-          title: 'Missing information',
-          description: 'Please fill in all fields',
-          variant: 'destructive'
+          title: "Missing information",
+          description: "Please fill in all fields",
+          variant: "destructive",
         });
         return;
       }
 
       const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(formData),
       });
 
       const result = await response.json();
 
       if (result.success) {
-        loginBackend(result.admin || result.user, result.token || '');
+        loginBackend(result.admin || result.user, result.token || "");
         toast({
-          title: isLogin ? 'Welcome back! 🎉' : 'Account created! 🎉',
-          description: result.message || (isLogin ? 'Login successful' : 'Registration successful')
+          title: isLogin ? "Welcome back! 🎉" : "Account created! 🎉",
+          description:
+            result.message ||
+            (isLogin ? "Login successful" : "Registration successful"),
         });
-        navigate('/');
+        navigate("/");
         window.location.reload();
       } else {
         toast({
-          title: 'Error',
-          description: result.error || 'Something went wrong',
-          variant: 'destructive'
+          title: "Error",
+          description: result.error || "Something went wrong",
+          variant: "destructive",
         });
       }
     } catch (error) {
-      console.error('Server error:', error);
+      console.error("Server error:", error);
       toast({
-        title: 'Server Error',
-        description: 'Unable to connect to backend',
-        variant: 'destructive'
+        title: "Server Error",
+        description: "Unable to connect to backend",
+        variant: "destructive",
       });
     }
   };
@@ -77,7 +83,14 @@ const LoginPage = () => {
   const handleBackToLogin = () => {
     setForgotPassword(false);
     setForgotPasswordStep(1);
-    setFormData({ email: '', password: '', name: '', otp: '', newPassword: '', confirmPassword: '' });
+    setFormData({
+      email: "",
+      password: "",
+      name: "",
+      otp: "",
+      newPassword: "",
+      confirmPassword: "",
+    });
   };
 
   const renderLoginRegisterForm = () => {
@@ -94,7 +107,9 @@ const LoginPage = () => {
                   type="text"
                   placeholder="John Doe"
                   value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, name: e.target.value })
+                  }
                   className="pl-10"
                 />
               </div>
@@ -110,7 +125,9 @@ const LoginPage = () => {
                 type="email"
                 placeholder="you@example.com"
                 value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                onChange={(e) =>
+                  setFormData({ ...formData, email: e.target.value })
+                }
                 className="pl-10"
               />
             </div>
@@ -125,7 +142,9 @@ const LoginPage = () => {
                 type="password"
                 placeholder="••••••••"
                 value={formData.password}
-                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                onChange={(e) =>
+                  setFormData({ ...formData, password: e.target.value })
+                }
                 className="pl-10"
               />
             </div>
@@ -143,8 +162,11 @@ const LoginPage = () => {
             </div>
           )}
 
-          <Button type="submit" className="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white font-semibold">
-            {isLogin ? 'Login' : 'Create Account'}
+          <Button
+            type="submit"
+            className="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white font-semibold"
+          >
+            {isLogin ? "Login" : "Create Account"}
           </Button>
         </form>
 
@@ -153,7 +175,9 @@ const LoginPage = () => {
             onClick={() => setIsLogin(!isLogin)}
             className="text-purple-600 hover:text-purple-700 font-medium"
           >
-            {isLogin ? "Don't have an account? Sign up" : 'Already have an account? Login'}
+            {isLogin
+              ? "Don't have an account? Sign up"
+              : "Already have an account? Login"}
           </button>
         </div>
       </>
@@ -163,7 +187,10 @@ const LoginPage = () => {
   return (
     <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-slate-50 via-purple-50 to-blue-50">
       <Helmet>
-        <title>{forgotPassword ? 'Reset Password' : (isLogin ? 'Login' : 'Sign Up')} - PDF Pro</title>
+        <title>
+          {forgotPassword ? "Reset Password" : isLogin ? "Login" : "Sign Up"} -
+          PDF Pro
+        </title>
       </Helmet>
 
       <motion.div
@@ -178,7 +205,11 @@ const LoginPage = () => {
         </Link>
 
         <h1 className="text-3xl font-bold text-center bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent mb-2">
-          {forgotPassword ? 'Reset Password' : (isLogin ? 'Welcome Back!' : 'Create Account')}
+          {forgotPassword
+            ? "Reset Password"
+            : isLogin
+            ? "Welcome Back!"
+            : "Create Account"}
         </h1>
 
         {forgotPassword ? (
