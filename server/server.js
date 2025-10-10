@@ -13,6 +13,7 @@ const contactRoutes = require("./routes/contactRoutes");
 const convertRoutes = require("./routes/tools-routes/Convert/Convert-Routes");
 const OrganizeRoutes = require('./routes/tools-routes/Organize/Organize-Route');
 const SecurityRoutes = require('./routes/tools-routes/Security/Security-Routes');
+
 const EditRoutes = require('./routes/tools-routes/Edit/Edit-Route');
 
 const app = express();
@@ -33,7 +34,7 @@ app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 // CORS setup
 app.use(
   cors({
-    origin: "http://localhost:3001",
+    origin: ["http://localhost:3001", "http://localhost:3000"],
     methods: ["GET", "POST", "PUT", "DELETE"],
     credentials: true,
   })
@@ -44,7 +45,7 @@ app.use("/api/auth", userRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/contact", contactRoutes);
 app.use("/api/convert", convertRoutes);
-
+app.use('/api/tools/pdf-editor', EditRoutes);
 // Serve static files from uploads directory
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 app.use('/api/organize', OrganizeRoutes);
