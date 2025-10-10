@@ -1,192 +1,343 @@
-const fs = require('fs');
+// controllers/tool-controller/Edit/Edit-Controller.js
 const path = require('path');
-const PDFDocument = require('pdfkit');
+const fs = require('fs').promises;
+const { PDFDocument, rgb, StandardFonts, PDFName, PDFString } = require('pdf-lib');
+const pdfParse = require('pdf-parse');
+const { spawn } = require('child_process');
 
-// Ensure upload directories exist
-const ensureUploadDirs = () => {
-  const baseDir = path.join(__dirname, '../../../uploads');
-  const dirs = [
-    'text',
-    'esignature',
-    'temp'
-  ];
-  
-  dirs.forEach(dir => {
-    const dirPath = path.join(baseDir, dir);
-    if (!fs.existsSync(dirPath)) {
-      fs.mkdirSync(dirPath, { recursive: true });
-    }
-  });
-};
+class EditController {
+  // Utility to handle file storage and session creation
+  async createSession(fileBuffer, originalFileName) {
+    const sessionId = `edit_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const sessionDir = path.join(__dirname, '../../../uploads/sessions', sessionId);
+    await fs.mkdir(sessionDir, { recursive: true });
+    const originalFilePath = path.join(sessionDir, 'original.pdf');
+    await fs.writeFile(originalFilePath, fileBuffer);
+    
+    const pdfDoc = await PDFDocument.load(fileBuffer);
+    const totalPages = pdfDoc.getPageCount();
+    
+    return { sessionId, originalFilePath, totalPages };
+  }
 
-ensureUploadDirs();
+  // --- Core API Endpoints ---
 
-const EditController = {
-
-  // PDF Editor Functions
-  async processPDFEditor(req, res) {
+  async uploadPDF(req, res) {
     try {
-      console.log('PDF Editor Request received');
-      const { pdfFile, annotations, annotationData, filename = 'edited-document' } = req.body;
-      
-      if (!annotationData) {
-        return res.status(400).json({ error: 'Annotation data is required' });
-      }
-
-      // Remove data URL prefix
-      const base64Data = annotationData.replace(/^data:image\/png;base64,/, '');
-      const imageBuffer = Buffer.from(base64Data, 'base64');
-      
-      const safeFilename = `${filename}-${Date.now()}.pdf`;
-      
-      // Create PDF in memory (no file system storage)
-      const doc = new PDFDocument();
-      const buffers = [];
-      
-      doc.on('data', buffers.push.bind(buffers));
-      doc.on('end', () => {
-        const pdfData = Buffer.concat(buffers);
-        
-        // Send PDF directly to client without saving
-        res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Content-Disposition', `attachment; filename="${safeFilename}"`);
-        res.setHeader('Content-Length', pdfData.length);
-        
-        res.json({
-          success: true,
-          message: 'PDF processed successfully',
-          filename: safeFilename,
-          pdfData: pdfData.toString('base64'),
-          annotationsCount: annotations ? annotations.length : 0
-        });
-      });
-      
-      // Add annotation image to PDF
-      doc.image(imageBuffer, {
-        fit: [500, 700],
-        align: 'center',
-        valign: 'center'
-      });
-      
-      // Add metadata
-      doc.info.Title = `Edited PDF - ${filename}`;
-      doc.info.Author = 'PDF Editor';
-      doc.info.CreationDate = new Date();
-      
-      doc.end();
-      
-    } catch (error) {
-      console.error('PDF Editor error:', error);
-      res.status(500).json({ error: 'Failed to process PDF: ' + error.message });
-    }
-  },
-
-  async downloadPDFEditor(req, res) {
-    try {
-      const { filename } = req.params;
-      
-      res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-      
-      // Create a simple PDF for download
-      const doc = new PDFDocument();
-      doc.pipe(res);
-      doc.fontSize(20).text('Edited PDF Document', 100, 100);
-      doc.text(`Filename: ${filename}`, 100, 150);
-      doc.text('This PDF was edited using the PDF Editor tool', 100, 200);
-      doc.end();
-      
-    } catch (error) {
-      console.error('Download error:', error);
-      res.status(500).json({ error: 'Download failed' });
-    }
-  },
-
-  // E-Signature Functions
-  async createESignature(req, res) {
-    try {
-      console.log('E-Signature Request received:', req.body);
-      const { name, style = 'standard' } = req.body;
-      
-      if (!name) {
-        return res.status(400).json({ error: 'Name is required for signature' });
-      }
-
-      // Create signature image
-      const { createCanvas } = require('canvas');
-      const canvas = createCanvas(400, 200);
-      const ctx = canvas.getContext('2d');
-      
-      // White background
-      ctx.fillStyle = 'white';
-      ctx.fillRect(0, 0, 400, 200);
-      
-      // Signature style
-      if (style === 'cursive') {
-        ctx.font = 'italic 36px Arial';
-        ctx.fillStyle = 'blue';
-      } else if (style === 'formal') {
-        ctx.font = 'bold 32px Times New Roman';
-        ctx.fillStyle = 'black';
-      } else {
-        ctx.font = '32px Arial';
-        ctx.fillStyle = 'darkblue';
+      if (!req.file || req.file.mimetype !== 'application/pdf') {
+        return res.status(400).json({ success: false, error: 'Only PDF files are allowed' });
       }
       
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(name, 200, 100);
-      
-      // Add signature line
-      ctx.strokeStyle = 'black';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(50, 150);
-      ctx.lineTo(350, 150);
-      ctx.stroke();
-      
-      const signatureBuffer = canvas.toBuffer('image/png');
-      const filename = `signature-${Date.now()}.png`;
-      const filePath = path.join(__dirname, '../../../uploads/esignature', filename);
-      
-      fs.writeFileSync(filePath, signatureBuffer);
-      
-      console.log('E-Signature created:', filename);
+      const { sessionId, totalPages } = await this.createSession(req.file.buffer, req.file.originalname);
       
       res.json({
         success: true,
-        message: 'E-Signature created successfully',
-        filename: filename,
-        downloadUrl: `/api/edit/esignature/download/${filename}`
+        sessionId,
+        totalPages,
+        message: 'PDF uploaded successfully'
       });
     } catch (error) {
-      console.error('E-Signature error:', error);
-      res.status(500).json({ error: 'Failed to create e-signature: ' + error.message });
-    }
-  },
-
-  async downloadESignature(req, res) {
-    try {
-      const { filename } = req.params;
-      const filePath = path.join(__dirname, '../../../uploads/esignature', filename);
-      
-      console.log('Download E-Signature:', filename);
-      
-      if (!fs.existsSync(filePath)) {
-        return res.status(404).json({ error: 'File not found' });
-      }
-      
-      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-      res.setHeader('Content-Type', 'image/png');
-      
-      const fileStream = fs.createReadStream(filePath);
-      fileStream.pipe(res);
-      
-    } catch (error) {
-      console.error('Download error:', error);
-      res.status(500).json({ error: 'Download failed' });
+      console.error('Upload error:', error);
+      res.status(500).json({ success: false, error: error.message });
     }
   }
-};
 
-module.exports = EditController;
+  async convertAndUpload(req, res) {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ success: false, error: 'No file uploaded' });
+      }
+
+      const tempDir = path.join(__dirname, '../../../uploads/temp');
+      await fs.mkdir(tempDir, { recursive: true });
+      const tempFilePath = path.join(tempDir, req.file.originalname);
+      await fs.writeFile(tempFilePath, req.file.buffer);
+
+      const libreOffice = new LibreOfficeService();
+      const convertedFilePath = await libreOffice.convertToPDF(tempFilePath, tempDir);
+      
+      const convertedPdfBuffer = await fs.readFile(convertedFilePath);
+      await fs.unlink(tempFilePath);
+      await fs.unlink(convertedFilePath);
+      
+      const { sessionId, totalPages } = await this.createSession(convertedPdfBuffer, req.file.originalname);
+
+      res.json({
+        success: true,
+        sessionId,
+        totalPages,
+        message: 'File converted and uploaded successfully'
+      });
+    } catch (error) {
+      console.error('Conversion and upload error:', error);
+      res.status(500).json({ success: false, error: error.message });
+    }
+  }
+
+  async extractText(req, res) {
+    try {
+      const { sessionId } = req.params;
+      const sessionDir = path.join(__dirname, '../../../uploads/sessions', sessionId);
+      const originalFilePath = path.join(sessionDir, 'original.pdf');
+      const pdfBytes = await fs.readFile(originalFilePath);
+      
+      const data = await pdfParse(pdfBytes);
+      const textContent = data.text
+        .split(/\r?\n/)
+        .filter(line => line.trim())
+        .map((line) => ({ text: line.trim() }));
+
+      res.json({ success: true, textContent });
+    } catch (error) {
+      console.error('Text extraction error:', error);
+      res.status(500).json({ success: false, error: error.message });
+    }
+  }
+
+  async extractFormFields(req, res) {
+    try {
+      const { sessionId } = req.params;
+      const sessionDir = path.join(__dirname, '../../../uploads/sessions', sessionId);
+      const originalFilePath = path.join(sessionDir, 'original.pdf');
+      const pdfBytes = await fs.readFile(originalFilePath);
+      const pdfDoc = await PDFDocument.load(pdfBytes);
+      
+      const formFields = new PDFService().extractFormFields(pdfDoc);
+      
+      res.json({ success: true, formFields });
+    } catch (error) {
+      console.error('Form extraction error:', error);
+      res.status(500).json({ success: false, error: error.message });
+    }
+  }
+  
+  async applyEdits(req, res) {
+    try {
+      const { sessionId, edits, formFields } = req.body;
+      const sessionDir = path.join(__dirname, '../../../uploads/sessions', sessionId);
+      const originalFilePath = path.join(sessionDir, 'original.pdf');
+      
+      const pdfBytes = await fs.readFile(originalFilePath);
+      const pdfDoc = await PDFDocument.load(pdfBytes);
+      
+      const pdfService = new PDFService();
+      
+      await pdfService.applyEdits(pdfDoc, edits);
+      pdfService.applyFormEdits(pdfDoc, formFields);
+      
+      const modifiedPdfBytes = await pdfDoc.save();
+      const outputPath = path.join(sessionDir, 'edited.pdf');
+      await fs.writeFile(outputPath, modifiedPdfBytes);
+      
+      res.json({ success: true, message: 'Edits applied successfully' });
+    } catch (error) {
+      console.error('Apply edits error:', error);
+      res.status(500).json({ success: false, error: error.message });
+    }
+  }
+  
+  async downloadEditedPDF(req, res) {
+    try {
+      const { sessionId } = req.params;
+      const editedFilePath = path.join(__dirname, '../../../uploads/sessions', sessionId, 'edited.pdf');
+      
+      await fs.access(editedFilePath);
+      
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', 'attachment; filename="edited-document.pdf"');
+      
+      const fileBuffer = await fs.readFile(editedFilePath);
+      res.send(fileBuffer);
+    } catch (error) {
+      console.error('Download error:', error);
+      res.status(500).json({ success: false, error: 'File not found or an error occurred' });
+    }
+  }
+}
+
+// --- Service Classes for better modularity ---
+
+class LibreOfficeService {
+  convertToPDF(inputPath, outputDir) {
+    return new Promise((resolve, reject) => {
+      const outputFilePath = path.join(outputDir, `${path.basename(inputPath, path.extname(inputPath))}.pdf`);
+      
+      // The `soffice` command might need to be adjusted depending on the system
+      const command = 'soffice';
+      const args = [
+        '--headless',
+        '--convert-to', 'pdf',
+        '--outdir', outputDir,
+        inputPath
+      ];
+      
+      const child = spawn(command, args);
+      
+      child.on('error', (err) => {
+        console.error('Failed to start LibreOffice process.', err);
+        reject(new Error('Failed to convert file. Is LibreOffice installed and in your PATH?'));
+      });
+      
+      child.on('close', (code) => {
+        if (code === 0) {
+          resolve(outputFilePath);
+        } else {
+          reject(new Error(`LibreOffice conversion failed with exit code ${code}`));
+        }
+      });
+    });
+  }
+}
+
+class PDFService {
+  extractFormFields(pdfDoc) {
+    const formFields = [];
+    try {
+      const form = pdfDoc.getForm();
+      const fields = form.getFields();
+      fields.forEach((field, index) => {
+        formFields.push({
+          id: `field_${index}`,
+          name: field.getName() || `Field ${index + 1}`,
+          type: field.constructor.name,
+          value: field.getText() || ''
+        });
+      });
+    } catch (formError) {
+      console.log('No form fields found:', formError.message);
+    }
+    return formFields;
+  }
+  
+  async applyEdits(pdfDoc, edits) {
+    const pages = pdfDoc.getPages();
+    const helveticaFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    
+    if (!Array.isArray(edits)) return;
+
+    for (const edit of edits) {
+      if (edit.page && edit.page <= pages.length) {
+        const page = pages[edit.page - 1];
+        const pageHeight = page.getHeight();
+        
+        switch (edit.type) {
+          case 'add-text':
+            page.drawText(edit.content || '', {
+              x: edit.x || 50,
+              y: pageHeight - (edit.y || 100),
+              size: edit.fontSize || 12,
+              font: helveticaFont,
+              color: this.hexToRgb(edit.color)
+            });
+            break;
+            
+          case 'image':
+          case 'signature':
+            if (edit.imageData) {
+              try {
+                const imageBytes = Buffer.from(edit.imageData.split(',')[1], 'base64');
+                let image;
+                if (edit.imageData.startsWith('data:image/jpeg') || edit.imageData.startsWith('data:image/jpg')) {
+                  image = await pdfDoc.embedJpg(imageBytes);
+                } else if (edit.imageData.startsWith('data:image/png')) {
+                  image = await pdfDoc.embedPng(imageBytes);
+                }
+                
+                if (image) {
+                  page.drawImage(image, {
+                    x: edit.x || 100,
+                    y: pageHeight - (edit.y || 100) - (edit.height || 150),
+                    width: edit.width || 200,
+                    height: edit.height || 150
+                  });
+                }
+              } catch (imgErr) {
+                console.error('Error embedding image:', imgErr);
+              }
+            }
+            break;
+
+          case 'highlight':
+            // Highlighting is a complex operation in PDF-lib. Here, we add a transparent rectangle.
+            page.drawRectangle({
+              x: edit.path[0].x,
+              y: pageHeight - edit.path[0].y - 20, // Adjust y to make it appear correctly
+              width: edit.path[edit.path.length - 1].x - edit.path[0].x,
+              height: 20,
+              color: rgb(1, 1, 0), // Yellow
+              opacity: 0.5,
+            });
+            break;
+
+          case 'pen':
+            const flattenedPath = edit.path.map(p => [p.x, pageHeight - p.y]);
+            if (flattenedPath.length >= 2) {
+              page.drawSvgPath(this.getSvgPath(flattenedPath), {
+                color: rgb(0, 0, 0),
+                borderWidth: 2,
+              });
+            }
+            break;
+
+          case 'square':
+            page.drawRectangle({
+              x: edit.path[0].x,
+              y: pageHeight - edit.path[0].y - (edit.path[1].y - edit.path[0].y),
+              width: edit.path[1].x - edit.path[0].x,
+              height: edit.path[1].y - edit.path[0].y,
+              borderColor: rgb(1, 0, 0),
+              borderWidth: 2,
+            });
+            break;
+
+          default:
+            console.log('Unsupported edit type:', edit.type);
+        }
+      }
+    }
+  }
+
+  applyFormEdits(pdfDoc, formFields) {
+    if (!Array.isArray(formFields)) return;
+    try {
+      const form = pdfDoc.getForm();
+      formFields.forEach(field => {
+        try {
+          const formField = form.getField(field.name);
+          if (formField && field.value) {
+            formField.setText(field.value);
+          }
+        } catch (fieldError) {
+          console.log(`Could not set field ${field.name}:`, fieldError.message);
+        }
+      });
+    } catch (formError) {
+      console.log('Form processing error:', formError.message);
+    }
+  }
+
+  hexToRgb(hex) {
+    if (!hex || hex === '#000000') return rgb(0, 0, 0);
+    hex = hex.replace(/^#/, '');
+    if (hex.length === 3) {
+      hex = hex.split('').map(c => c + c).join('');
+    }
+    const bigint = parseInt(hex, 16);
+    const r = ((bigint >> 16) & 255) / 255;
+    const g = ((bigint >> 8) & 255) / 255;
+    const b = (bigint & 255) / 255;
+    return rgb(r, g, b);
+  }
+  
+  getSvgPath(points) {
+    if (!points || points.length < 2) return '';
+    const start = points[0];
+    const path = [`M ${start[0]} ${start[1]}`];
+    for (let i = 1; i < points.length; i++) {
+      path.push(`L ${points[i][0]} ${points[i][1]}`);
+    }
+    return path.join(' ');
+  }
+}
+
+module.exports = new EditController();

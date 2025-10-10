@@ -41,6 +41,53 @@ const validateFileType = (file, allowedTypes) => {
   return allowedTypes.includes(ext);
 };
 
+// NEW: Function to save converted files to user account
+const saveFileToUserAccount = async (
+  fileBuffer,
+  originalName,
+  mimetype,
+  userId,
+  toolUsed = "convert"
+) => {
+  try {
+    const File = require("../../../../models/FileModel");
+    const fs = require("fs-extra");
+    const path = require("path");
+
+    // Ensure uploads directory exists
+    const uploadDir = "uploads/converted_files/";
+    await fs.ensureDir(uploadDir);
+
+    // Generate unique filename
+    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    const fileExtension = path.extname(originalName) || ".pdf";
+    const filename = `converted-${uniqueSuffix}${fileExtension}`;
+    const filePath = path.join(uploadDir, filename);
+
+    // Save file to disk
+    await fs.writeFile(filePath, fileBuffer);
+
+    // Save file info to database
+    const fileRecord = new File({
+      filename: filename,
+      originalName: originalName,
+      path: filePath,
+      size: fileBuffer.length,
+      mimetype: mimetype,
+      uploadedBy: userId,
+      category: "converted",
+      toolUsed: toolUsed,
+    });
+
+    await fileRecord.save();
+    console.log("File saved to user account:", fileRecord._id);
+    return fileRecord;
+  } catch (error) {
+    console.error("Error saving file to user account:", error);
+    throw error;
+  }
+};
+
 // Real conversion function using LibreOffice for documents
 const convertWithLibreOffice = async (inputPath, outputPath, originalExt) => {
   try {
@@ -586,6 +633,27 @@ const convertToPdf = async (req, res) => {
       conversion.outputPath = outputPath;
       await conversion.save();
 
+      // NEW: Save converted file to user account if user is authenticated
+      if (req.user && req.user.id) {
+        try {
+          const fileBuffer = await fs.readFile(outputPath);
+          await saveFileToUserAccount(
+            fileBuffer,
+            outputFilename,
+            "application/pdf",
+            req.user.id,
+            "convert-to-pdf"
+          );
+          console.log("Converted file saved to user account");
+        } catch (saveError) {
+          console.error(
+            "Failed to save converted file to user account:",
+            saveError
+          );
+          // Don't fail the conversion if saving fails
+        }
+      }
+
       res.json({
         success: true,
         message: `${originalExt
@@ -671,6 +739,27 @@ const convertPdfToImage = async (req, res) => {
       conversion.outputPath = outputPath;
       await conversion.save();
 
+      // NEW: Save converted file to user account if user is authenticated
+      if (req.user && req.user.id) {
+        try {
+          const fileBuffer = await fs.readFile(outputPath);
+          await saveFileToUserAccount(
+            fileBuffer,
+            outputFilename,
+            `image/${imageFormat}`,
+            req.user.id,
+            "pdf-to-image"
+          );
+          console.log("Converted image saved to user account");
+        } catch (saveError) {
+          console.error(
+            "Failed to save converted image to user account:",
+            saveError
+          );
+          // Don't fail the conversion if saving fails
+        }
+      }
+
       res.json({
         success: true,
         message: "PDF converted to image successfully",
@@ -749,6 +838,27 @@ const convertImageToPdf = async (req, res) => {
       conversion.downloadUrl = downloadUrl;
       conversion.outputPath = outputPath;
       await conversion.save();
+
+      // NEW: Save converted file to user account if user is authenticated
+      if (req.user && req.user.id) {
+        try {
+          const fileBuffer = await fs.readFile(outputPath);
+          await saveFileToUserAccount(
+            fileBuffer,
+            outputFilename,
+            "application/pdf",
+            req.user.id,
+            "image-to-pdf"
+          );
+          console.log("Image to PDF saved to user account");
+        } catch (saveError) {
+          console.error(
+            "Failed to save image to PDF to user account:",
+            saveError
+          );
+          // Don't fail the conversion if saving fails
+        }
+      }
 
       res.json({
         success: true,
