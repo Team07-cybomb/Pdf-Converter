@@ -14,7 +14,6 @@ const adminRoutes = require("./routes/adminRoutes");
 const contactRoutes = require("./routes/contactRoutes");
 const convertRoutes = require("./routes/tools-routes/Convert/Convert-Routes");
 
-
 // ✅ New: Advanced Tools Route
 const AdvancedRoutes = require("./routes/tools-routes/Advanced/Advanced-Route");
 const OrganizeRoutes = require("./routes/tools-routes/Organize/Organize-Route");
@@ -47,8 +46,8 @@ const storage = multer.memoryStorage();
 const upload = multer({
   storage: storage,
   limits: {
-    fileSize: 10 * 1024 * 1024 // 10MB limit
-  }
+    fileSize: 10 * 1024 * 1024, // 10MB limit
+  },
 });
 
 // Middleware
@@ -79,6 +78,7 @@ app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 app.use("/api/organize", OrganizeRoutes);
 app.use("/api/security", SecurityRoutes);
 app.use("/api/files", fileRoutes);
+app.use("/api/advanced", AdvancedRoutes);
 
 // Apply multer to file-rename route
 app.use(

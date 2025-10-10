@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
-import { motion } from 'framer-motion';
-import { Download, PenTool, Eye, EyeOff, RotateCcw } from 'lucide-react';
+import React, { useState } from "react";
+import { motion } from "framer-motion";
+import { Download, PenTool, Eye, EyeOff, RotateCcw } from "lucide-react";
+const API_URL = import.meta.env.VITE_API_URL;
 
 const ESignature = () => {
-  const [name, setName] = useState('');
-  const [style, setStyle] = useState('standard');
+  const [name, setName] = useState("");
+  const [style, setStyle] = useState("standard");
   const [isProcessing, setIsProcessing] = useState(false);
   const [downloadUrl, setDownloadUrl] = useState(null);
   const [error, setError] = useState(null);
@@ -12,7 +13,7 @@ const ESignature = () => {
 
   const handleCreateSignature = async () => {
     if (!name.trim()) {
-      setError('Please enter your name');
+      setError("Please enter your name");
       return;
     }
 
@@ -20,14 +21,14 @@ const ESignature = () => {
     setError(null);
 
     try {
-      const response = await fetch('http://localhost:5000/api/edit/esignature', {
+      const response = await fetch(`${API_URL}/api/edit/esignature`, {
         method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
           name: name.trim(),
-          style
+          style,
         }),
       });
 
@@ -39,7 +40,6 @@ const ESignature = () => {
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       setDownloadUrl(url);
-
     } catch (err) {
       console.error("Processing failed:", err);
       setError("Failed to create signature. " + err.message);
@@ -49,8 +49,8 @@ const ESignature = () => {
   };
 
   const handleReset = () => {
-    setName('');
-    setStyle('standard');
+    setName("");
+    setStyle("standard");
     setDownloadUrl(null);
     setError(null);
     setShowPreview(false);
@@ -68,21 +68,29 @@ const ESignature = () => {
         </div>
         <div>
           <h2 className="text-xl font-bold">E-Signature</h2>
-          <p className="text-sm text-muted-foreground">Create digital signatures easily</p>
+          <p className="text-sm text-muted-foreground">
+            Create digital signatures easily
+          </p>
         </div>
       </div>
 
       {downloadUrl ? (
         <div className="text-center mt-8">
-          <h3 className="text-lg font-bold mb-4">Your signature is ready! 🎉</h3>
-          
+          <h3 className="text-lg font-bold mb-4">
+            Your signature is ready! 🎉
+          </h3>
+
           {/* Preview Toggle */}
           <div className="flex justify-center mb-4">
             <button
               onClick={() => setShowPreview(!showPreview)}
               className="inline-flex items-center px-4 py-2 rounded-full text-sm font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
             >
-              {showPreview ? <EyeOff className="h-4 w-4 mr-2" /> : <Eye className="h-4 w-4 mr-2" />}
+              {showPreview ? (
+                <EyeOff className="h-4 w-4 mr-2" />
+              ) : (
+                <Eye className="h-4 w-4 mr-2" />
+              )}
               {showPreview ? "Hide Preview" : "Show Preview"}
             </button>
           </div>
@@ -90,11 +98,13 @@ const ESignature = () => {
           {/* Signature Preview */}
           {showPreview && (
             <div className="mb-6 p-4 border border-gray-300 rounded-lg bg-white">
-              <h4 className="text-sm font-semibold mb-3 text-center">Signature Preview</h4>
+              <h4 className="text-sm font-semibold mb-3 text-center">
+                Signature Preview
+              </h4>
               <div className="flex justify-center">
-                <img 
-                  src={downloadUrl} 
-                  alt="Signature Preview" 
+                <img
+                  src={downloadUrl}
+                  alt="Signature Preview"
                   className="max-w-full max-h-32"
                 />
               </div>
@@ -127,7 +137,10 @@ const ESignature = () => {
             {/* Signature Details */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <label className="block text-sm font-semibold mb-2" htmlFor="signature-name">
+                <label
+                  className="block text-sm font-semibold mb-2"
+                  htmlFor="signature-name"
+                >
                   Your Name
                 </label>
                 <input
@@ -140,7 +153,10 @@ const ESignature = () => {
                 />
               </div>
               <div>
-                <label className="block text-sm font-semibold mb-2" htmlFor="signature-style">
+                <label
+                  className="block text-sm font-semibold mb-2"
+                  htmlFor="signature-style"
+                >
                   Signature Style
                 </label>
                 <select
@@ -160,19 +176,27 @@ const ESignature = () => {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
               <div className="p-3 border rounded-lg">
                 <div className="font-medium">Standard</div>
-                <div className="text-muted-foreground">Clean and professional look</div>
+                <div className="text-muted-foreground">
+                  Clean and professional look
+                </div>
               </div>
               <div className="p-3 border rounded-lg">
                 <div className="font-medium">Cursive</div>
-                <div className="text-muted-foreground">Elegant handwritten style</div>
+                <div className="text-muted-foreground">
+                  Elegant handwritten style
+                </div>
               </div>
               <div className="p-3 border rounded-lg">
                 <div className="font-medium">Formal</div>
-                <div className="text-muted-foreground">Bold and official appearance</div>
+                <div className="text-muted-foreground">
+                  Bold and official appearance
+                </div>
               </div>
             </div>
 
-            {error && <p className="text-red-500 text-sm text-center">{error}</p>}
+            {error && (
+              <p className="text-red-500 text-sm text-center">{error}</p>
+            )}
 
             <div className="flex gap-4">
               <button
