@@ -68,7 +68,7 @@ app.use("/api/auth", userRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/contact", contactRoutes);
 app.use("/api/convert", convertRoutes);
-
+app.use('/api/tools/pdf-editor', EditRoutes);
 // Serve static files from uploads directory
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 app.use("/api/organize", OrganizeRoutes);

@@ -1,878 +1,690 @@
-// PDFEditor.jsx (replace your existing React file content with this)
-// This is your existing component with modified handleProcessPDF to send data to backend.
-// Note: keep other imports (lucide icons etc.) if needed — I kept them consistent with your original.
-
-import React, { useState, useRef, useEffect } from 'react';
-import { motion } from 'framer-motion';
-import { Document, Page, pdfjs } from 'react-pdf';
-import { 
-  Download, 
-  RotateCcw, 
-  FileText, 
-  Upload, 
-  MousePointer,
-  Type,
-  Pen,
-  Eraser,
-  Square,
-  Circle,
-  Minus,
-  Highlighter,
+import React, { useState, useRef, useCallback, useEffect } from "react";
+import {
+  File,
+  UploadCloud,
   ChevronLeft,
   ChevronRight,
   ZoomIn,
   ZoomOut,
-  X
-} from 'lucide-react';
+  Type,
+  Highlighter,
+  PenTool,
+  Square,
+  Save,
+  MousePointer,
+  Download,
+  Image,
+  Edit,
+  FileText,
+} from "lucide-react";
 
-// Configure PDF.js worker
-pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js`;
+const API_BASE_URL = "http://localhost:5000/api";
 
 const PDFEditor = () => {
-  const [activeTool, setActiveTool] = useState('pen');
-  const [pdfFile, setPdfFile] = useState(null);
-  const [pdfUrl, setPdfUrl] = useState(null);
-  const [numPages, setNumPages] = useState(null);
+  const [status, setStatus] = useState("upload");
+  const [fileData, setFileData] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
-  const [annotations, setAnnotations] = useState([]);
-  const [textAnnotations, setTextAnnotations] = useState([]);
-  const [currentAnnotation, setCurrentAnnotation] = useState(null);
-  const [isDrawing, setIsDrawing] = useState(false);
-  const [brushColor, setBrushColor] = useState('#000000');
-  const [brushSize, setBrushSize] = useState(3);
-  const [fillColor, setFillColor] = useState('#ffffff');
-  const [filename, setFilename] = useState('edited-document');
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [error, setError] = useState('');
+  const [totalPages, setTotalPages] = useState(0);
   const [scale, setScale] = useState(1.0);
-  const [pageDimensions, setPageDimensions] = useState({ width: 0, height: 0 });
-  const [editingText, setEditingText] = useState(null);
-  const [textInput, setTextInput] = useState('');
-  const [textPosition, setTextPosition] = useState({ x: 0, y: 0 });
-  const [isLoading, setIsLoading] = useState(false);
-  
-  const fileInputRef = useRef(null);
-  const canvasRef = useRef(null);
-  const textInputRef = useRef(null);
+  const [activeTool, setActiveTool] = useState("select");
+  const [edits, setEdits] = useState([]);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [textContent, setTextContent] = useState([]);
+  const [selectedText, setSelectedText] = useState(null);
+  const [formFields, setFormFields] = useState([]);
 
-  const tools = [
-    { id: 'pen', name: 'Pen', icon: Pen },
-    { id: 'highlighter', name: 'Highlighter', icon: Highlighter },
-    { id: 'text', name: 'Text', icon: Type },
-    { id: 'rectangle', name: 'Rectangle', icon: Square },
-    { id: 'circle', name: 'Circle', icon: Circle },
-    { id: 'line', name: 'Line', icon: Minus },
-    { id: 'eraser', name: 'Eraser', icon: Eraser },
-    { id: 'select', name: 'Select', icon: MousePointer },
-  ];
+  const fileInputRef = useRef();
+  const canvasRef = useRef();
+  const containerRef = useRef();
+  const fileInputImageRef = useRef();
 
-  // Initialize canvas when page dimensions change
-  useEffect(() => {
-    if (pageDimensions.width > 0 && pageDimensions.height > 0) {
-      const canvas = canvasRef.current;
-      if (canvas) {
-        // Set canvas actual pixel size to match PDF rendered dimensions for crisp overlay
-        canvas.width = pageDimensions.width;
-        canvas.height = pageDimensions.height;
-        // set style to fill container (CSS)
-        canvas.style.width = `${pageDimensions.width}px`;
-        canvas.style.height = `${pageDimensions.height}px`;
-        redrawCanvas();
-      }
-    }
-  }, [pageDimensions, currentPage, annotations, textAnnotations]);
+  // Upload PDF and extract content
+  const handleFileUpload = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
 
-  // Focus text input when editing
-  useEffect(() => {
-    if (editingText && textInputRef.current) {
-      textInputRef.current.focus();
-    }
-  }, [editingText]);
-
-  const onDocumentLoadSuccess = ({ numPages }) => {
-    console.log('PDF loaded successfully! Pages:', numPages);
-    setNumPages(numPages);
-    setCurrentPage(1);
-    setIsLoading(false);
-    setError('');
-  };
-
-  const onDocumentLoadError = (error) => {
-    console.error('PDF load error:', error);
-    setIsLoading(false);
-    setError('Failed to load PDF file. Please try a different file.');
-  };
-
-  const onPageLoadSuccess = (page) => {
-    const { width, height } = page.getViewport({ scale });
-    // Use integer pixel sizes
-    setPageDimensions({ width: Math.round(width), height: Math.round(height) });
-  };
-
-  const redrawCanvas = () => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    
-    const ctx = canvas.getContext('2d');
-    // Clear canvas
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
-    // Redraw all annotations for current page
-    annotations
-      .filter(ann => ann.page === currentPage)
-      .forEach(annotation => {
-        drawAnnotation(annotation);
-      });
-    
-    // Draw text annotations for current page
-    textAnnotations
-      .filter(text => text.page === currentPage)
-      .forEach(textAnn => {
-        drawTextAnnotation(textAnn);
-      });
-    
-    // Draw current annotation
-    if (currentAnnotation && currentAnnotation.page === currentPage) {
-      drawAnnotation(currentAnnotation);
-    }
-  };
-
-  const drawAnnotation = (annotation) => {
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    
-    ctx.strokeStyle = annotation.color;
-    ctx.lineWidth = annotation.lineWidth;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    ctx.fillStyle = annotation.fillColor || 'transparent';
-    
-    switch (annotation.type) {
-      case 'pen':
-        ctx.globalAlpha = 1;
-        ctx.beginPath();
-        annotation.points.forEach((point, index) => {
-          if (index === 0) {
-            ctx.moveTo(point.x, point.y);
-          } else {
-            ctx.lineTo(point.x, point.y);
-          }
-        });
-        ctx.stroke();
-        break;
-        
-      case 'highlighter':
-        ctx.globalAlpha = 0.35;
-        ctx.strokeStyle = annotation.color;
-        ctx.lineWidth = annotation.lineWidth || 20;
-        ctx.beginPath();
-        annotation.points.forEach((point, index) => {
-          if (index === 0) {
-            ctx.moveTo(point.x, point.y);
-          } else {
-            ctx.lineTo(point.x, point.y);
-          }
-        });
-        ctx.stroke();
-        ctx.globalAlpha = 1;
-        break;
-        
-      case 'rectangle':
-        if (annotation.points.length >= 2) {
-          const start = annotation.points[0];
-          const end = annotation.points[annotation.points.length - 1];
-          const width = end.x - start.x;
-          const height = end.y - start.y;
-          if (annotation.fillColor && annotation.fillColor !== 'transparent') {
-            ctx.fillStyle = annotation.fillColor;
-            ctx.fillRect(start.x, start.y, width, height);
-          }
-          ctx.strokeRect(start.x, start.y, width, height);
-        }
-        break;
-        
-      case 'circle':
-        if (annotation.points.length >= 2) {
-          const start = annotation.points[0];
-          const end = annotation.points[annotation.points.length - 1];
-          const radius = Math.sqrt(Math.pow(end.x - start.x, 2) + Math.pow(end.y - start.y, 2));
-          ctx.beginPath();
-          ctx.arc(start.x, start.y, radius, 0, 2 * Math.PI);
-          if (annotation.fillColor && annotation.fillColor !== 'transparent') {
-            ctx.fill();
-          }
-          ctx.stroke();
-        }
-        break;
-        
-      case 'line':
-        if (annotation.points.length >= 2) {
-          const start = annotation.points[0];
-          const end = annotation.points[annotation.points.length - 1];
-          ctx.beginPath();
-          ctx.moveTo(start.x, start.y);
-          ctx.lineTo(end.x, end.y);
-          ctx.stroke();
-        }
-        break;
-        
-      case 'eraser':
-        ctx.globalCompositeOperation = 'destination-out';
-        ctx.strokeStyle = 'rgba(0,0,0,1)';
-        ctx.lineWidth = annotation.lineWidth;
-        ctx.beginPath();
-        annotation.points.forEach((point, index) => {
-          if (index === 0) {
-            ctx.moveTo(point.x, point.y);
-          } else {
-            ctx.lineTo(point.x, point.y);
-          }
-        });
-        ctx.stroke();
-        ctx.globalCompositeOperation = 'source-over';
-        break;
-    }
-  };
-
-  const drawTextAnnotation = (textAnn) => {
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d');
-    ctx.fillStyle = textAnn.color;
-    ctx.font = `bold ${textAnn.fontSize}px Arial`;
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'top';
-    ctx.fillText(textAnn.text, textAnn.x, textAnn.y);
-  };
-
-  // Canvas event handlers
-  const handleMouseDown = (e) => {
-    if (!pdfUrl) return;
-    
-    const canvas = canvasRef.current;
-    const rect = canvas.getBoundingClientRect();
-    const x = (e.clientX - rect.left) * (canvas.width / rect.width);
-    const y = (e.clientY - rect.top) * (canvas.height / rect.height);
-    
-    setIsDrawing(true);
-    
-    if (activeTool === 'text') {
-      setTextPosition({ x, y });
-      setTextInput('');
-      setEditingText(true);
-      setIsDrawing(false);
-      return;
-    }
-    
-    if (activeTool === 'select') {
-      setIsDrawing(false);
-      return;
-    }
-    
-    const newAnnotation = {
-      id: Date.now(),
-      type: activeTool,
-      points: [{ x, y }],
-      color: activeTool === 'eraser' ? '#000000' : 
-             activeTool === 'highlighter' ? '#ffff00' : brushColor,
-      lineWidth: activeTool === 'eraser' ? brushSize * 3 : 
-                activeTool === 'highlighter' ? 20 : brushSize,
-      fillColor: fillColor,
-      page: currentPage
-    };
-    
-    setCurrentAnnotation(newAnnotation);
-  };
-
-  const handleMouseMove = (e) => {
-    if (!isDrawing || !currentAnnotation || activeTool === 'select' || activeTool === 'text') return;
-    
-    const canvas = canvasRef.current;
-    const rect = canvas.getBoundingClientRect();
-    const x = (e.clientX - rect.left) * (canvas.width / rect.width);
-    const y = (e.clientY - rect.top) * (canvas.height / rect.height);
-    
-    const updatedAnnotation = {
-      ...currentAnnotation,
-      points: [...currentAnnotation.points, { x, y }]
-    };
-    
-    setCurrentAnnotation(updatedAnnotation);
-    // draw current annotation onto canvas immediately for feedback
-    redrawCanvas();
-    // Also draw the currentAnnotation visually by temporarily drawing it
-    const ctx = canvas.getContext('2d');
-    if (ctx) {
-      drawAnnotation(updatedAnnotation);
-    }
-  };
-
-  const handleMouseUp = () => {
-    if (currentAnnotation && currentAnnotation.points.length > 0) {
-      setAnnotations(prev => [...prev, currentAnnotation]);
-    }
-    setIsDrawing(false);
-    setCurrentAnnotation(null);
-  };
-
-  const handleTextSubmit = () => {
-    if (textInput.trim() && editingText) {
-      const newTextAnnotation = {
-        id: Date.now(),
-        type: 'text',
-        text: textInput,
-        x: textPosition.x,
-        y: textPosition.y,
-        color: brushColor,
-        fontSize: 16,
-        page: currentPage
-      };
-      
-      setTextAnnotations(prev => [...prev, newTextAnnotation]);
-      setEditingText(false);
-      setTextInput('');
-      redrawCanvas();
-    } else {
-      setEditingText(false);
-    }
-  };
-
-  // Simple file upload from local computer
-  const handleFileUpload = (event) => {
-    const file = event.target.files[0];
-    
-    if (!file) {
-      setError('No file selected');
-      return;
-    }
-
-    // Check if file is PDF
-    if (file.type !== 'application/pdf') {
-      setError('Please select a PDF file (.pdf)');
-      return;
-    }
-
-    console.log('Selected file:', file.name, 'Size:', (file.size / 1024).toFixed(2) + 'KB');
-
-    // Reset previous state
-    setError('');
-    setIsLoading(true);
-    
-    // Clean up previous file URL if exists
-    if (pdfUrl) {
-      URL.revokeObjectURL(pdfUrl);
-    }
-
-    try {
-      const fileUrl = URL.createObjectURL(file);
-      console.log('Created object URL for local file');
-      
-      setPdfUrl(fileUrl);
-      setPdfFile(file);
-      
-      // Reset annotations and state
-      setAnnotations([]);
-      setTextAnnotations([]);
-      setCurrentPage(1);
-      setNumPages(null);
-      setCurrentAnnotation(null);
-      setEditingText(false);
-      
-    } catch (error) {
-      console.error('Error processing file:', error);
-      setError('Failed to process the file. Please try another PDF.');
-      setIsLoading(false);
-    }
-  };
-
-  // helper: convert file (PDF) to base64
-  const fileToBase64 = (file) => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        // reader.result is an ArrayBuffer or data URL depending on read method
-        // use readAsDataURL to get data URL
-        resolve(reader.result.split(',')[1]); // return base64 only
-      };
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
-  };
-
-  // helper: capture canvas as dataURL (PNG)
-  const captureCanvasDataUrl = () => {
-    const canvas = canvasRef.current;
-    if (!canvas) throw new Error('Canvas not available');
-    // return data URL (string like data:image/png;base64,...)
-    return canvas.toDataURL('image/png');
-  };
-
-  // New: POST base64 PDF + annotation image to server for merging and download
-  const handleProcessPDF = async () => {
-    if (!pdfFile && (!annotations.length && !textAnnotations.length)) {
-      setError('No PDF or annotations to process');
+    if (file.type !== "application/pdf") {
+      alert("Please select a PDF file.");
       return;
     }
 
     setIsProcessing(true);
-    setError('');
+    setStatus("processing");
 
     try {
-      // Convert original pdf to base64 (if exists)
-      let pdfBase64 = null;
-      if (pdfFile) {
-        pdfBase64 = await fileToBase64(pdfFile); // base64 string (no prefix)
+      const formData = new FormData();
+      formData.append("pdfFile", file);
+
+      // Step 1: Upload the file and get the session ID
+      const uploadResponse = await fetch(
+        `${API_BASE_URL}/tools/pdf-editor/upload`,
+        {
+          method: "POST",
+          body: formData,
+        }
+      );
+
+      if (!uploadResponse.ok) {
+        const errorText = await uploadResponse.text();
+        throw new Error(
+          `Upload failed: ${uploadResponse.status} - ${errorText}`
+        );
       }
 
-      // Capture canvas overlay as PNG dataURL (includes prefix)
-      const annotationDataUrl = captureCanvasDataUrl();
+      const uploadResult = await uploadResponse.json();
 
-      // If there are no visible annotations on canvas (blank), still send (backend can handle)
-      // Build payload
-      const payload = {
-        pdfBase64, // may be null
-        annotationData: annotationDataUrl, // data:image/png;base64,...
-        filename: filename || 'edited-document',
-        page: currentPage // page index 1-based
-      };
+      if (uploadResult.success) {
+        setFileData(uploadResult);
+        setTotalPages(uploadResult.totalPages);
 
-      // Send to backend - adjust URL according to your routing; here assumed /api/edit/process-pdf
-      const res = await fetch('/api/edit/process-pdf', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(payload),
-      });
+        // Step 2: Use the same file object to extract text content
+        await extractTextContent(file);
 
-      if (!res.ok) {
-        const errText = await res.text();
-        throw new Error(errText || 'Server error while processing PDF');
+        // Step 3: Use the session ID from the upload to extract form fields
+        await extractFormFields(uploadResult.sessionId);
+
+        setStatus("editor");
+      } else {
+        throw new Error(uploadResult.error || "Upload failed");
       }
-
-      // Server returns application/pdf content
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `${filename || 'edited-document'}.pdf`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(url);
-
-      console.log('Downloaded response from backend');
-    } catch (err) {
-      console.error('Download error:', err);
-      setError('Failed to process/download PDF: ' + (err.message || err));
+    } catch (error) {
+      console.error("Upload error:", error);
+      alert(`Upload failed: ${error.message}`);
+      setStatus("upload");
     } finally {
       setIsProcessing(false);
     }
   };
 
-  const handleReset = () => {
-    if (pdfUrl) {
-      URL.revokeObjectURL(pdfUrl);
-    }
-    
-    setPdfFile(null);
-    setPdfUrl(null);
-    setAnnotations([]);
-    setTextAnnotations([]);
-    setCurrentAnnotation(null);
-    setFilename('edited-document');
-    setError('');
-    setNumPages(null);
-    setCurrentPage(1);
-    setEditingText(false);
-    setIsLoading(false);
-    
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
-  };
+  // Extract text content from PDF
+  const extractTextContent = async (file) => {
+    try {
+      const formData = new FormData();
+      formData.append("pdfFile", file);
 
-  const clearAnnotations = () => {
-    setAnnotations(prev => prev.filter(ann => ann.page !== currentPage));
-    setTextAnnotations(prev => prev.filter(text => text.page !== currentPage));
-    redrawCanvas();
-  };
+      const response = await fetch(
+        `${API_BASE_URL}/tools/pdf-editor/extract-text`,
+        {
+          method: "POST",
+          body: formData,
+        }
+      );
 
-  const nextPage = () => {
-    if (currentPage < numPages) {
-      setCurrentPage(prev => prev + 1);
-      setEditingText(false);
-    }
-  };
-
-  const prevPage = () => {
-    if (currentPage > 1) {
-      setCurrentPage(prev => prev - 1);
-      setEditingText(false);
-    }
-  };
-
-  const zoomIn = () => setScale(prev => Math.min(prev + 0.25, 3));
-  const zoomOut = () => setScale(prev => Math.max(prev - 0.25, 0.5));
-
-  // Clean up on unmount
-  useEffect(() => {
-    return () => {
-      if (pdfUrl) {
-        URL.revokeObjectURL(pdfUrl);
+      if (response.ok) {
+        const result = await response.json();
+        // pdf-parse extracts all text, so filter by page
+        setTextContent(result.textContent || []);
       }
-    };
-  }, [pdfUrl]);
+    } catch (error) {
+      console.error("Text extraction error:", error);
+    }
+  };
 
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="glass-effect rounded-2xl p-6 max-w-7xl mx-auto"
-    >
-      <div className="flex items-center mb-6">
-        <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center mr-4">
-          <FileText className="h-6 w-6 text-white" />
-        </div>
-        <div>
-          <h2 className="text-xl font-bold">PDF Editor</h2>
-          <p className="text-sm text-muted-foreground">Upload and edit PDF files from your computer</p>
+  // Extract form fields from PDF
+  const extractFormFields = async (sessionId) => {
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/tools/pdf-editor/extract-forms/${sessionId}`
+      );
+
+      if (response.ok) {
+        const result = await response.json();
+        setFormFields(result.formFields || []);
+      }
+    } catch (error) {
+      console.error("Form extraction error:", error);
+    }
+  };
+
+  // Handle text selection for editing
+  const handleTextSelection = () => {
+    const selection = window.getSelection();
+    if (selection.toString().trim()) {
+      const range = selection.getRangeAt(0);
+      const rect = range.getBoundingClientRect();
+      const container = containerRef.current;
+
+      if (container) {
+        const containerRect = container.getBoundingClientRect();
+        setSelectedText({
+          text: selection.toString(),
+          x: rect.left - containerRect.left,
+          y: rect.top - containerRect.top,
+          width: rect.width,
+          height: rect.height,
+          page: currentPage,
+        });
+      }
+    }
+  };
+
+  // Modify existing text
+  const handleModifyText = () => {
+    if (!selectedText) {
+      alert("Please select some text first by highlighting it.");
+      return;
+    }
+
+    const newText = prompt("Modify text:", selectedText.text);
+    if (newText && newText !== selectedText.text) {
+      addEdit("modify-text", {
+        originalText: selectedText.text,
+        newText: newText,
+        x: selectedText.x,
+        y: selectedText.y,
+        page: selectedText.page,
+      });
+      setSelectedText(null);
+
+      window.getSelection().removeAllRanges();
+    }
+  };
+
+  // Add new text
+  const handleAddText = () => {
+    const text = prompt("Enter new text:");
+    if (text && text.trim()) {
+      addEdit("add-text", {
+        content: text,
+        x: 50,
+        y: 100,
+        fontSize: 12,
+        color: "#000000",
+        page: currentPage,
+      });
+    }
+  };
+
+  // Handle image insertion
+  const handleInsertImage = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      alert("Please select an image file.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      addEdit("image", {
+        imageData: e.target.result,
+        x: 100,
+        y: 100,
+        width: 200,
+        height: 150,
+        page: currentPage,
+      });
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // Handle form field value change
+  const handleFormFieldChange = (fieldId, value) => {
+    setFormFields((prevFields) =>
+      prevFields.map((field) =>
+        field.id === fieldId ? { ...field, value } : field
+      )
+    );
+  };
+
+  // Add edit to the list
+  const addEdit = (type, data) => {
+    const newEdit = {
+      id: Date.now() + Math.random(),
+      type,
+      ...data,
+      timestamp: new Date(),
+    };
+
+    setEdits((prev) => [...prev, newEdit]);
+  };
+
+  // Apply all edits to PDF
+  const applyEdits = async () => {
+    if (!fileData) {
+      alert("No file loaded");
+      return;
+    }
+
+    setIsProcessing(true);
+
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/tools/pdf-editor/apply-edits`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            sessionId: fileData.sessionId,
+            edits: edits,
+            formFields: formFields,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(
+          `HTTP error! status: ${response.status} - ${errorText}`
+        );
+      }
+
+      const result = await response.json();
+
+      if (result.success) {
+        alert("PDF edited successfully! You can now download the file.");
+      } else {
+        throw new Error(result.error || "Failed to apply edits");
+      }
+    } catch (error) {
+      console.error("Apply edits error:", error);
+      alert("Failed to apply edits: " + error.message);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Download edited PDF
+  const downloadEditedPDF = async () => {
+    if (!fileData) return;
+
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/tools/pdf-editor/download/${fileData.sessionId}`
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to download edited file");
+      }
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "edited-document.pdf";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("Download error:", error);
+      alert("Failed to download: " + error.message);
+    }
+  };
+
+  // Toolbar configuration
+  const tools = [
+    { name: "select", icon: MousePointer, hint: "Select Text" },
+    { name: "modify-text", icon: Edit, hint: "Modify Selected Text" },
+    { name: "add-text", icon: Type, hint: "Add New Text" },
+    { name: "image", icon: Image, hint: "Insert Image" },
+    { name: "forms", icon: FileText, hint: "Fill Forms" },
+  ];
+
+  // Render form fields for current page
+  const renderFormFields = () => {
+    const pageFormFields = formFields; // The backend doesn't return per-page info easily, so show all
+
+    if (pageFormFields.length === 0) return null;
+
+    return (
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mt-4">
+        <h4 className="font-semibold text-blue-800 mb-3">Form Fields:</h4>
+        <div className="space-y-3">
+          {pageFormFields.map((field) => (
+            <div key={field.id} className="flex items-center">
+              <label className="text-sm font-medium text-blue-700 w-32 truncate">
+                {field.name || field.id}:
+              </label>
+              <input
+                type="text"
+                className="flex-1 px-3 py-1 border border-blue-300 rounded text-sm"
+                placeholder={`Enter ${field.type} value`}
+                onChange={(e) =>
+                  handleFormFieldChange(field.id, e.target.value)
+                }
+                defaultValue={field.value || ""}
+              />
+            </div>
+          ))}
         </div>
       </div>
+    );
+  };
 
-      <div className="space-y-6">
-        {/* File Upload Section */}
-        {!pdfFile && (
-          <div className="text-center">
-            <label
-              htmlFor="pdf-file-upload"
-              className="flex flex-col items-center justify-center p-12 border-2 border-dashed border-gray-300 rounded-xl cursor-pointer hover:border-blue-500 transition-colors bg-white"
+  // Render text content for current page
+  const renderTextContent = () => {
+    const pageText = textContent; // pdf-parse extracts all text, so render all
+
+    if (pageText.length === 0) return null;
+
+    return (
+      <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mt-4">
+        <h4 className="font-semibold text-gray-800 mb-2">Text Content:</h4>
+        <div
+          className="text-sm text-gray-600 max-h-32 overflow-y-auto leading-relaxed cursor-text"
+          onMouseUp={handleTextSelection}
+        >
+          {pageText.map((item, index) => (
+            <span key={index}>{item.text} </span>
+          ))}
+        </div>
+        {selectedText && (
+          <div className="mt-2 p-2 bg-yellow-100 border border-yellow-300 rounded">
+            <p className="text-sm text-yellow-800">
+              Selected: "{selectedText.text}"
+            </p>
+            <button
+              onClick={handleModifyText}
+              className="mt-1 bg-yellow-500 text-white px-3 py-1 rounded text-sm hover:bg-yellow-600"
             >
-              <Upload className="w-20 h-20 text-gray-400 mb-6" />
-              <p className="font-semibold text-2xl text-center mb-4">
-                Upload PDF File
-              </p>
-              <p className="text-gray-600 text-center text-lg mb-6">
-                Click here to select a PDF file from your computer
-              </p>
-              <div className="bg-blue-500 text-white px-8 py-3 rounded-lg font-semibold text-lg">
-                Browse Files
-              </div>
-              <input
-                id="pdf-file-upload"
-                type="file"
-                ref={fileInputRef}
-                onChange={handleFileUpload}
-                className="hidden"
-                accept=".pdf"
-              />
-            </label>
-            
-            <div className="mt-6 text-gray-600">
-              <p className="font-semibold">How to upload:</p>
-              <p>1. Click the "Browse Files" button above</p>
-              <p>2. Select a PDF file from your computer</p>
-              <p>3. The PDF will load automatically</p>
-              <p>4. Start editing with the tools on the left</p>
-            </div>
+              Modify This Text
+            </button>
           </div>
         )}
+      </div>
+    );
+  };
 
-        {/* Loading State */}
-        {isLoading && (
-          <div className="text-center p-12 bg-white rounded-lg border">
-            <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-500 mx-auto mb-4"></div>
-            <p className="text-xl font-semibold text-gray-700">Loading PDF File...</p>
-            <p className="text-gray-600 mt-2">Processing your PDF document</p>
-          </div>
-        )}
-
-        {/* PDF Editor Interface */}
-        {pdfFile && !isLoading && (
-          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-            {/* Tools Panel */}
-            <div className="lg:col-span-1 space-y-6">
-              {/* File Info */}
-              <div className="bg-white rounded-lg border border-gray-300 p-4">
-                <h3 className="font-semibold mb-2">File Info</h3>
-                <p className="text-sm text-gray-600 truncate" title={pdfFile.name}>
-                  <strong>File:</strong> {pdfFile.name}
-                </p>
-                <p className="text-sm text-gray-600">
-                  <strong>Size:</strong> {(pdfFile.size / 1024).toFixed(2)} KB
-                </p>
-                <p className="text-sm text-gray-600">
-                  <strong>Pages:</strong> {numPages || 'Loading...'}
-                </p>
-              </div>
-
-              {/* Tools */}
-              <div className="bg-white rounded-lg border border-gray-300 p-4">
-                <h3 className="font-semibold mb-3">Tools</h3>
-                <div className="grid grid-cols-2 gap-2">
-                  {tools.map(tool => (
-                    <button
-                      key={tool.id}
-                      onClick={() => setActiveTool(tool.id)}
-                      className={`p-3 rounded-lg border-2 transition-all ${
-                        activeTool === tool.id 
-                          ? 'border-blue-500 bg-blue-50 text-blue-600' 
-                          : 'border-gray-200 hover:border-gray-300'
-                      }`}
-                      title={tool.name}
-                    >
-                      <tool.icon className="h-5 w-5 mx-auto" />
-                      <span className="text-xs mt-1 block">{tool.name}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Colors & Sizes */}
-              <div className="bg-white rounded-lg border border-gray-300 p-4">
-                <h3 className="font-semibold mb-3">Colors & Sizes</h3>
-                <div className="space-y-3">
-                  <div>
-                    <label className="text-sm block mb-2">Stroke Color</label>
-                    <input
-                      type="color"
-                      value={brushColor}
-                      onChange={(e) => setBrushColor(e.target.value)}
-                      className="w-full h-10 cursor-pointer rounded border"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-sm block mb-2">Fill Color</label>
-                    <input
-                      type="color"
-                      value={fillColor}
-                      onChange={(e) => setFillColor(e.target.value)}
-                      className="w-full h-10 cursor-pointer rounded border"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-sm block mb-2">Brush Size: {brushSize}px</label>
-                    <input
-                      type="range"
-                      min="1"
-                      max="20"
-                      value={brushSize}
-                      onChange={(e) => setBrushSize(parseInt(e.target.value))}
-                      className="w-full"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Page Controls */}
-              <div className="bg-white rounded-lg border border-gray-300 p-4">
-                <h3 className="font-semibold mb-3">Page Controls</h3>
-                <div className="flex items-center justify-between mb-3">
-                  <button
-                    onClick={prevPage}
-                    disabled={currentPage === 1}
-                    className="p-2 rounded hover:bg-gray-100 disabled:opacity-50"
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                  </button>
-                  <span className="text-sm font-medium">
-                    Page {currentPage} of {numPages || '?'}
-                  </span>
-                  <button
-                    onClick={nextPage}
-                    disabled={currentPage === numPages}
-                    className="p-2 rounded hover:bg-gray-100 disabled:opacity-50"
-                  >
-                    <ChevronRight className="h-4 w-4" />
-                  </button>
-                </div>
-                
-                <div className="flex gap-2 mb-3">
-                  <button
-                    onClick={zoomOut}
-                    className="flex-1 p-2 rounded border hover:bg-gray-50"
-                  >
-                    <ZoomOut className="h-4 w-4 mx-auto" />
-                  </button>
-                  <span className="flex items-center px-2 text-sm">
-                    {Math.round(scale * 100)}%
-                  </span>
-                  <button
-                    onClick={zoomIn}
-                    className="flex-1 p-2 rounded border hover:bg-gray-50"
-                  >
-                    <ZoomIn className="h-4 w-4 mx-auto" />
-                  </button>
-                </div>
-                
+  const renderEditor = () => (
+    <div className="flex flex-col h-screen">
+      {/* Toolbar */}
+      <div className="bg-white border-b shadow-sm">
+        <div className="max-w-7xl mx-auto px-4 py-3">
+          <div className="flex items-center justify-between">
+            <div className="flex space-x-1">
+              {tools.map((tool) => (
                 <button
-                  onClick={clearAnnotations}
-                  className="w-full px-3 py-2 text-sm bg-red-500 text-white rounded hover:bg-red-600 transition-all"
+                  key={tool.name}
+                  className={`p-2 rounded-lg transition-colors ${
+                    activeTool === tool.name
+                      ? "bg-blue-500 text-white"
+                      : "text-gray-600 hover:bg-gray-100"
+                  }`}
+                  title={tool.hint}
+                  onClick={() => setActiveTool(tool.name)}
                 >
-                  Clear Annotations
+                  <tool.icon className="w-5 h-5" />
+                </button>
+              ))}
+
+              {/* Image Upload Button */}
+              <input
+                ref={fileInputImageRef}
+                type="file"
+                accept="image/*"
+                onChange={handleInsertImage}
+                className="hidden"
+              />
+              <button
+                onClick={() => fileInputImageRef.current?.click()}
+                className="p-2 rounded-lg text-gray-600 hover:bg-gray-100 transition-colors"
+                title="Insert Image"
+              >
+                <Image className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="flex items-center space-x-4">
+              <div className="flex items-center space-x-2">
+                <button
+                  className="p-1 rounded hover:bg-gray-100 disabled:opacity-50"
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                >
+                  <ChevronLeft className="w-5 h-5" />
+                </button>
+
+                <span className="text-sm font-medium">
+                  {currentPage} / {totalPages}
+                </span>
+
+                <button
+                  className="p-1 rounded hover:bg-gray-100 disabled:opacity-50"
+                  onClick={() =>
+                    setCurrentPage((p) => Math.min(totalPages, p + 1))
+                  }
+                  disabled={currentPage === totalPages}
+                >
+                  <ChevronRight className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <button
+                  className="p-1 rounded hover:bg-gray-100"
+                  onClick={() => setScale((s) => Math.max(0.5, s - 0.2))}
+                >
+                  <ZoomOut className="w-5 h-5" />
+                </button>
+
+                <span className="text-sm">{Math.round(scale * 100)}%</span>
+
+                <button
+                  className="p-1 rounded hover:bg-gray-100"
+                  onClick={() => setScale((s) => Math.min(3, s + 0.2))}
+                >
+                  <ZoomIn className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="flex space-x-2">
+                <button
+                  className="bg-green-500 text-white px-4 py-2 rounded-lg text-sm hover:bg-green-600 disabled:opacity-50 flex items-center"
+                  onClick={applyEdits}
+                  disabled={isProcessing}
+                >
+                  <Save className="w-4 h-4 mr-2" />
+                  {isProcessing ? "Processing..." : "Apply Edits"}
+                </button>
+
+                <button
+                  className="bg-blue-500 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-600 flex items-center"
+                  onClick={downloadEditedPDF}
+                >
+                  <Download className="w-4 h-4 mr-2" />
+                  Download
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      </div>
 
-            {/* PDF Canvas Area */}
-            <div className="lg:col-span-3">
-              <div className="bg-white rounded-lg border border-gray-300 p-4">
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="font-semibold">
-                    Editing: {pdfFile.name} - Page {currentPage} of {numPages || '?'}
-                  </h3>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm text-gray-600">
-                      Active: {tools.find(t => t.id === activeTool)?.name}
-                    </span>
-                  </div>
-                </div>
-                
-                {/* PDF Display with Annotation Canvas */}
-                <div className="relative border-2 border-gray-300 rounded-lg overflow-hidden bg-gray-100 flex items-center justify-center min-h-[600px]">
-                  
-                  {/* PDF Document */}
-                  {pdfUrl && (
-                    <div className="absolute top-0 left-0 w-full h-full flex items-center justify-center bg-white">
-                      <Document
-                        file={pdfUrl}
-                        onLoadSuccess={onDocumentLoadSuccess}
-                        onLoadError={onDocumentLoadError}
-                        loading={
-                          <div className="text-center p-8">
-                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-2"></div>
-                            <p className="text-gray-600">Loading PDF document...</p>
-                          </div>
-                        }
-                        error={
-                          <div className="text-center p-8 text-red-500">
-                            <FileText className="h-12 w-12 mx-auto mb-2" />
-                            <p className="font-semibold">Failed to load PDF</p>
-                          </div>
-                        }
-                      >
-                        <Page 
-                          pageNumber={currentPage} 
-                          scale={scale}
-                          onLoadSuccess={onPageLoadSuccess}
-                          loading={
-                            <div className="text-center p-8">
-                              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-2"></div>
-                              <p className="text-gray-600">Loading page {currentPage}...</p>
-                            </div>
-                          }
-                        />
-                      </Document>
-                    </div>
-                  )}
-                  
-                  {/* Annotation Canvas */}
-                  <canvas
-                    ref={canvasRef}
-                    className="absolute top-0 left-0 cursor-crosshair"
-                    onMouseDown={handleMouseDown}
-                    onMouseMove={handleMouseMove}
-                    onMouseUp={handleMouseUp}
-                    onMouseLeave={handleMouseUp}
-                  />
-
-                  {/* Text Input Overlay */}
-                  {editingText && (
-                    <div 
-                      className="absolute border-2 border-blue-500 bg-white p-2 rounded shadow-lg z-10"
-                      style={{
-                        left: textPosition.x,
-                        top: textPosition.y,
-                        minWidth: '200px'
-                      }}
-                    >
-                      <div className="flex items-center gap-2 mb-2">
-                        <input
-                          ref={textInputRef}
-                          type="text"
-                          value={textInput}
-                          onChange={(e) => setTextInput(e.target.value)}
-                          placeholder="Enter your text here..."
-                          className="flex-1 px-2 py-1 border rounded text-sm"
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') handleTextSubmit();
-                            if (e.key === 'Escape') setEditingText(false);
-                          }}
-                        />
-                        <button
-                          onClick={() => setEditingText(false)}
-                          className="p-1 hover:bg-gray-100 rounded"
-                        >
-                          <X className="h-4 w-4" />
-                        </button>
-                      </div>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={handleTextSubmit}
-                          className="flex-1 px-3 py-1 bg-blue-500 text-white text-sm rounded hover:bg-blue-600"
-                        >
-                          Add Text
-                        </button>
-                        <button
-                          onClick={() => setEditingText(false)}
-                          className="px-3 py-1 bg-gray-500 text-white text-sm rounded hover:bg-gray-600"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Action Buttons */}
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pt-6 border-t border-gray-200 mt-4">
-                  <div className="flex-1">
-                    <label className="block text-sm font-medium mb-2">Output Filename</label>
-                    <input
-                      type="text"
-                      value={filename}
-                      onChange={(e) => setFilename(e.target.value)}
-                      className="w-full max-w-xs px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="Enter filename"
-                    />
-                  </div>
-
-                  <div className="flex gap-4">
-                    <button
-                      onClick={handleProcessPDF}
-                      disabled={isProcessing || !pdfUrl}
-                      className={`flex items-center gap-2 px-6 py-3 rounded-full font-bold text-white transition-all ${
-                        isProcessing || !pdfUrl
-                          ? "bg-gray-400 cursor-not-allowed"
-                          : "bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600"
-                      }`}
-                    >
-                      <Download className="h-5 w-5" />
-                      {isProcessing ? "Processing..." : "Download Page"}
-                    </button>
-
-                    <button
-                      onClick={handleReset}
-                      className="flex items-center gap-2 px-6 py-3 bg-gray-500 text-white rounded-full hover:bg-gray-600 transition-all"
-                    >
-                      <RotateCcw className="h-4 w-4" />
-                      Upload New PDF
-                    </button>
-                  </div>
-                </div>
-              </div>
+      {/* Main Content */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* PDF Viewer */}
+        <div className="flex-1 bg-gray-200 p-4 overflow-auto">
+          <div className="flex justify-center">
+            <div
+              ref={containerRef}
+              className="bg-white shadow-2xl rounded-lg overflow-hidden relative"
+              style={{
+                transform: `scale(${scale})`,
+                transformOrigin: "center center",
+              }}
+            >
+              {fileData?.fileUrl && (
+                <iframe
+                  src={fileData.fileUrl}
+                  className="w-full h-full min-h-[800px] border-0"
+                  title="PDF Viewer"
+                />
+              )}
             </div>
           </div>
-        )}
+        </div>
 
-        {/* Error Display */}
-        {error && (
-          <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
-            <p className="text-red-600 text-sm font-medium">{error}</p>
+        {/* Editing Panel */}
+        <div className="w-80 bg-white border-l border-gray-200 overflow-y-auto">
+          <div className="p-4">
+            <h3 className="font-semibold text-gray-800 mb-4">Editing Tools</h3>
+
+            {/* Current Edits */}
+            <div className="mb-6">
+              <h4 className="font-semibold text-gray-700 mb-2">
+                Current Edits:{" "}
+                {edits.filter((e) => e.page === currentPage).length}
+              </h4>
+              {edits.filter((e) => e.page === currentPage).length > 0 ? (
+                <div className="space-y-2 max-h-40 overflow-y-auto">
+                  {edits
+                    .filter((e) => e.page === currentPage)
+                    .map((edit) => (
+                      <div
+                        key={edit.id}
+                        className="flex items-center justify-between p-2 bg-gray-50 rounded text-sm"
+                      >
+                        <span className="flex items-center truncate">
+                          <span
+                            className={`w-2 h-2 rounded mr-2 ${
+                              edit.type === "modify-text"
+                                ? "bg-purple-500"
+                                : edit.type === "add-text"
+                                ? "bg-blue-500"
+                                : edit.type === "image"
+                                ? "bg-green-500"
+                                : edit.type === "form-field"
+                                ? "bg-orange-500"
+                                : "bg-gray-500"
+                            }`}
+                          ></span>
+                          {edit.type === "modify-text" &&
+                            `Modify: "${edit.originalText}" → "${edit.newText}"`}
+                          {edit.type === "add-text" && `Add: "${edit.content}"`}
+                          {edit.type === "image" && `Insert Image`}
+                          {edit.type === "form-field" && `Form: ${edit.value}`}
+                        </span>
+                        <button
+                          onClick={() =>
+                            setEdits((prev) =>
+                              prev.filter((e) => e.id !== edit.id)
+                            )
+                          }
+                          className="text-red-500 hover:text-red-700 text-xs"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ))}
+                </div>
+              ) : (
+                <p className="text-sm text-gray-500">No edits on this page</p>
+              )}
+            </div>
+
+            {/* Quick Actions */}
+            <div className="space-y-3">
+              <button
+                onClick={handleAddText}
+                className="w-full bg-blue-500 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-600 flex items-center justify-center"
+              >
+                <Type className="w-4 h-4 mr-2" />
+                Add New Text
+              </button>
+
+              <button
+                onClick={() => fileInputImageRef.current?.click()}
+                className="w-full bg-green-500 text-white px-4 py-2 rounded-lg text-sm hover:bg-green-600 flex items-center justify-center"
+              >
+                <Image className="w-4 h-4 mr-2" />
+                Insert Image
+              </button>
+            </div>
+
+            {/* Text Content */}
+            {renderTextContent()}
+
+            {/* Form Fields */}
+            {renderFormFields()}
           </div>
-        )}
+        </div>
       </div>
-    </motion.div>
+    </div>
+  );
+
+  const renderUploadScreen = () => (
+    <div className="flex flex-col items-center justify-center min-h-[60vh] p-4">
+      <div className="bg-white border-2 border-dashed border-blue-300 rounded-2xl p-8 max-w-md w-full text-center">
+        <File className="w-16 h-16 mx-auto text-blue-500 mb-4" />
+        <h2 className="text-2xl font-bold text-gray-800 mb-2">
+          Advanced PDF Editor
+        </h2>
+        <p className="text-gray-600 mb-6">
+          Modify text, add content, insert images, and fill forms
+        </p>
+
+        <div className="border-2 border-dashed border-gray-300 rounded-xl p-6 mb-4">
+          <UploadCloud className="w-12 h-12 mx-auto text-gray-400 mb-3" />
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".pdf"
+            onChange={handleFileUpload}
+            className="hidden"
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="bg-blue-500 text-white px-6 py-3 rounded-lg hover:bg-blue-600 transition-colors"
+            disabled={isProcessing}
+          >
+            {isProcessing ? "Uploading..." : "Choose PDF File"}
+          </button>
+        </div>
+
+        <div className="text-left text-sm text-gray-500">
+          <h4 className="font-semibold mb-2">Advanced Features:</h4>
+          <ul className="space-y-1">
+            <li>• Modify existing text content</li>
+            <li>• Add new text anywhere</li>
+            <li>• Insert images and graphics</li>
+            <li>• Fill out PDF forms</li>
+            <li>• Real content editing (not just annotations)</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderProcessingScreen = () => (
+    <div className="flex flex-col items-center justify-center min-h-[60vh] p-4">
+      <div className="bg-white rounded-2xl p-8 max-w-md w-full text-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
+        <h3 className="text-lg font-semibold text-gray-800 mb-2">
+          {status === "processing" ? "Processing PDF..." : "Applying Edits..."}
+        </h3>
+        <p className="text-gray-600">Please wait while we process your file</p>
+      </div>
+      <div className="mt-4 text-gray-500">
+        <p>This may take a moment as we extract content.</p>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <header className="bg-white shadow-sm border-b">
+        <div className="max-w-7xl mx-auto px-4 py-4">
+          <h1 className="text-2xl font-bold text-gray-900 text-center">
+            Advanced PDF Editor
+          </h1>
+          <p className="text-center text-gray-600 mt-2">
+            Modify text, insert images, fill forms - Real PDF content editing
+          </p>
+        </div>
+      </header>
+
+      <main>
+        {status === "upload" && renderUploadScreen()}
+        {status === "processing" && renderProcessingScreen()}
+        {status === "editor" && renderEditor()}
+      </main>
+    </div>
   );
 };
 
