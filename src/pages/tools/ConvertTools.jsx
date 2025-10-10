@@ -1,4 +1,3 @@
-// ConvertTools.jsx
 import React, { useState } from "react";
 import { motion } from "framer-motion";
 import {
@@ -49,6 +48,7 @@ const ConvertTools = () => {
   const [conversionResult, setConversionResult] = useState(null);
   const [showPreview, setShowPreview] = useState(false);
   const [downloadUrl, setDownloadUrl] = useState(null);
+  const [fileSaved, setFileSaved] = useState(false);
 
   const handleToolClick = (tool) => {
     setSelectedTool(tool);
@@ -57,6 +57,7 @@ const ConvertTools = () => {
     setIsConverting(false);
     setShowPreview(false);
     setDownloadUrl(null);
+    setFileSaved(false);
   };
 
   const handleFileUpload = (event) => {
@@ -65,6 +66,72 @@ const ConvertTools = () => {
       setUploadedFile(file);
       setConversionResult(null);
       setDownloadUrl(null);
+      setFileSaved(false);
+    }
+  };
+
+  // Function to save converted file to My Files
+  const saveToMyFiles = async (fileBlob, filename, toolUsed) => {
+    try {
+      // Convert blob to base64 for sending to backend
+      const reader = new FileReader();
+
+      return new Promise((resolve, reject) => {
+        reader.onloadend = async () => {
+          const base64data = reader.result;
+
+          try {
+            const saveResponse = await fetch(
+              "http://localhost:5000/api/files/save-converted",
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  originalName: filename,
+                  fileBuffer: base64data,
+                  mimetype: fileBlob.type,
+                  toolUsed: toolUsed,
+                }),
+                credentials: "include",
+              }
+            );
+
+            // Check if response is OK
+            if (!saveResponse.ok) {
+              throw new Error(`HTTP error! status: ${saveResponse.status}`);
+            }
+
+            const saveResult = await saveResponse.json();
+
+            if (saveResult.success) {
+              console.log("File saved to My Files:", saveResult.file);
+              setFileSaved(true);
+              resolve(saveResult);
+            } else {
+              console.warn("Failed to save to My Files:", saveResult.error);
+              // Don't reject here - just warn and resolve anyway
+              // so conversion doesn't fail if saving fails
+              resolve({ success: false, error: saveResult.error });
+            }
+          } catch (error) {
+            console.warn("Error saving to My Files:", error);
+            // Resolve instead of reject to prevent conversion failure
+            resolve({ success: false, error: error.message });
+          }
+        };
+
+        reader.onerror = () => {
+          console.warn("File reading failed for My Files save");
+          resolve({ success: false, error: "File reading failed" });
+        };
+
+        reader.readAsDataURL(fileBlob);
+      });
+    } catch (error) {
+      console.warn("Save to My Files error:", error);
+      return { success: false, error: error.message };
     }
   };
 
@@ -74,6 +141,7 @@ const ConvertTools = () => {
     setIsConverting(true);
     setConversionResult(null);
     setDownloadUrl(null);
+    setFileSaved(false);
 
     try {
       const formData = new FormData();
@@ -106,31 +174,28 @@ const ConvertTools = () => {
       const response = await fetch(`http://localhost:5000${endpoint}`, {
         method: "POST",
         body: formData,
+        credentials: "include",
       });
 
       const contentType = response.headers.get("content-type");
 
+      let blob;
+      let filename = "converted-file";
+
       // Handle file download response
       if (contentType && contentType.includes("application/pdf")) {
-        const blob = await response.blob();
+        blob = await response.blob();
         const url = window.URL.createObjectURL(blob);
         setDownloadUrl(url);
 
         // Get filename from Content-Disposition header
         const contentDisposition = response.headers.get("content-disposition");
-        let filename = "converted-file";
         if (contentDisposition) {
           const filenameMatch = contentDisposition.match(/filename="(.+)"/);
           if (filenameMatch) {
             filename = filenameMatch[1];
           }
         }
-
-        setConversionResult({
-          success: true,
-          convertedFilename: filename,
-          downloadUrl: url,
-        });
       }
       // Handle JSON response (for errors or other info)
       else if (contentType && contentType.includes("application/json")) {
@@ -149,34 +214,47 @@ const ConvertTools = () => {
             const downloadResponse = await fetch(
               `http://localhost:5000${result.downloadUrl}`
             );
-            const blob = await downloadResponse.blob();
+            blob = await downloadResponse.blob();
             const url = window.URL.createObjectURL(blob);
             setDownloadUrl(url);
+
+            // Extract filename from download URL or use default
+            const urlParts = result.downloadUrl.split("/");
+            filename = result.convertedFilename || filename;
           }
         } else {
           throw new Error(result.error || "Conversion failed");
         }
       } else {
         // Handle other file types (images, etc.)
-        const blob = await response.blob();
+        blob = await response.blob();
         const url = window.URL.createObjectURL(blob);
         setDownloadUrl(url);
 
         const contentDisposition = response.headers.get("content-disposition");
-        let filename = "converted-file";
         if (contentDisposition) {
           const filenameMatch = contentDisposition.match(/filename="(.+)"/);
           if (filenameMatch) {
             filename = filenameMatch[1];
           }
         }
-
-        setConversionResult({
-          success: true,
-          convertedFilename: filename,
-          downloadUrl: url,
-        });
       }
+
+      // Save the converted file to My Files
+      if (blob) {
+        try {
+          await saveToMyFiles(blob, filename, selectedTool.id);
+        } catch (saveError) {
+          console.warn("Failed to save to My Files:", saveError);
+          // Don't fail the conversion if saving fails
+        }
+      }
+
+      setConversionResult({
+        success: true,
+        convertedFilename: filename,
+        downloadUrl: downloadUrl,
+      });
     } catch (error) {
       console.error("Conversion error:", error);
       alert(`Conversion failed: ${error.message}`);
@@ -214,6 +292,7 @@ const ConvertTools = () => {
     setIsConverting(false);
     setShowPreview(false);
     setDownloadUrl(null);
+    setFileSaved(false);
   };
 
   if (selectedTool) {
@@ -309,6 +388,16 @@ const ConvertTools = () => {
             <h3 className="text-lg font-bold mb-4">
               Conversion Successful! 🎉
             </h3>
+
+            {/* File Saved Status */}
+            {fileSaved && (
+              <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+                <p className="text-green-700 text-sm font-medium">
+                  ✅ File automatically saved to <strong>My Files</strong>{" "}
+                  section
+                </p>
+              </div>
+            )}
 
             {/* Preview Toggle */}
             <div className="flex justify-center mb-4">
