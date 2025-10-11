@@ -13,14 +13,15 @@ const userRoutes = require("./routes/userRoutes");
 const adminRoutes = require("./routes/adminRoutes");
 const contactRoutes = require("./routes/contactRoutes");
 const convertRoutes = require("./routes/tools-routes/Convert/Convert-Routes");
-
-
 // ✅ New: Advanced Tools Route
 const AdvancedRoutes = require("./routes/tools-routes/Advanced/Advanced-Route");
 const OrganizeRoutes = require("./routes/tools-routes/Organize/Organize-Route");
 const SecurityRoutes = require("./routes/tools-routes/Security/Security-Routes");
 const EditRoutes = require("./routes/tools-routes/Edit/Edit-Route");
 const fileRoutes = require("./routes/fileRoutes");
+
+
+
 
 const app = express();
 
@@ -79,6 +80,9 @@ app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 app.use("/api/organize", OrganizeRoutes);
 app.use("/api/security", SecurityRoutes);
 app.use("/api/files", fileRoutes);
+app.use("/api/advanced", AdvancedRoutes);
+app.use('/api/tools/pdf-editor', EditRoutes);
+
 
 // Apply multer to file-rename route
 app.use(
