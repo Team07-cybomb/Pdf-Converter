@@ -7,20 +7,18 @@ import {
   ZoomIn,
   ZoomOut,
   Type,
-  PenTool,
   Image,
   Edit,
-  FileText,
   MousePointer,
   Save,
   Download,
 } from "lucide-react";
-const API_URL = import.meta.env.VITE_API_URL;
 
+const API_URL = import.meta.env.VITE_API_URL;
 const API_BASE_URL = `${API_URL}/api`;
 
 const PDFEditor = () => {
-  const [status, setStatus] = useState("upload"); // upload | processing | editor
+  const [status, setStatus] = useState("upload");
   const [fileData, setFileData] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(0);
@@ -28,185 +26,374 @@ const PDFEditor = () => {
   const [activeTool, setActiveTool] = useState("select");
   const [edits, setEdits] = useState([]);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [textContent, setTextContent] = useState([]);
-  const [selectedText, setSelectedText] = useState(null);
-  const [formFields, setFormFields] = useState([]);
-  const [pdfBlobUrl, setPdfBlobUrl] = useState(null);
+  const [pdfDoc, setPdfDoc] = useState(null);
+  const [pdfjsLib, setPdfjsLib] = useState(null);
+  const [pdfStructure, setPdfStructure] = useState({
+    pages: [],
+    metadata: {},
+    fonts: [],
+    images: []
+  });
+  const [selectedElement, setSelectedElement] = useState(null);
 
   const fileInputRef = useRef();
   const fileInputImageRef = useRef();
   const containerRef = useRef();
+  const canvasRef = useRef();
 
-  // Cleanup blob URLs on unmount
+  // Load PDF.js dynamically
   useEffect(() => {
-    return () => {
-      if (pdfBlobUrl) {
-        URL.revokeObjectURL(pdfBlobUrl);
+    const loadPdfJs = async () => {
+      try {
+        if (window.pdfjsLib) {
+          setPdfjsLib(window.pdfjsLib);
+          window.pdfjsLib.GlobalWorkerOptions.workerSrc = 
+            'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+          return;
+        }
+
+        const script = document.createElement('script');
+        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+        script.onload = () => {
+          console.log('PDF.js loaded successfully');
+          setPdfjsLib(window.pdfjsLib);
+          window.pdfjsLib.GlobalWorkerOptions.workerSrc = 
+            'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        };
+        document.head.appendChild(script);
+      } catch (error) {
+        console.error('Failed to load PDF.js:', error);
       }
     };
-  }, [pdfBlobUrl]);
 
-  // ===========================
-  // Upload PDF - FIXED VERSION
-  // ===========================
-  const handleFileUpload = async (event) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    
-    if (file.type !== "application/pdf") {
-      alert("Please select a PDF file.");
-      return;
-    }
+    loadPdfJs();
+  }, []);
 
-    setIsProcessing(true);
-    setStatus("processing");
+  // Parse PDF structure and extract content
+  const parsePDFStructure = async (pdfDoc) => {
+    const structure = {
+      pages: [],
+      metadata: {},
+      fonts: new Set(),
+      images: []
+    };
 
     try {
-      const formData = new FormData();
-      formData.append("pdfFile", file);
+      // Extract metadata
+      const metadata = await pdfDoc.getMetadata();
+      structure.metadata = {
+        title: metadata.info?.Title || 'Untitled',
+        author: metadata.info?.Author || 'Unknown',
+        subject: metadata.info?.Subject || '',
+        creator: metadata.info?.Creator || '',
+        producer: metadata.info?.Producer || '',
+        creationDate: metadata.info?.CreationDate || '',
+        modificationDate: metadata.info?.ModDate || ''
+      };
 
-      // Upload PDF to backend
-      const uploadResponse = await fetch(
-        `${API_BASE_URL}/tools/pdf-editor/upload`,
-        { 
-          method: "POST", 
-          body: formData 
-        }
-      );
-
-      if (!uploadResponse.ok) {
-        const errorText = await uploadResponse.text();
-        throw new Error(`Upload failed: ${uploadResponse.status} - ${errorText}`);
-      }
-
-      const uploadResult = await uploadResponse.json();
-
-      if (uploadResult.success) {
-        // Create blob URL for local PDF display
-        const blobUrl = URL.createObjectURL(file);
-        setPdfBlobUrl(blobUrl);
+      // Parse each page
+      for (let pageNum = 1; pageNum <= pdfDoc.numPages; pageNum++) {
+        const page = await pdfDoc.getPage(pageNum);
+        const viewport = page.getViewport({ scale: 1.0 });
+        const textContent = await page.getTextContent();
         
-        setFileData({
-          ...uploadResult,
-          fileUrl: blobUrl
+        const pageStructure = {
+          pageNumber: pageNum,
+          width: viewport.width,
+          height: viewport.height,
+          viewport: viewport,
+          textElements: [],
+          images: [],
+          blocks: []
+        };
+
+        // Process text content into structured elements
+        let currentBlock = null;
+        
+        textContent.items.forEach((item, index) => {
+          // Extract font information
+          if (item.fontName) {
+            structure.fonts.add(item.fontName);
+          }
+
+          const textElement = {
+            id: `text-${pageNum}-${index}`,
+            type: 'text',
+            content: item.str,
+            originalContent: item.str,
+            x: item.transform[4],
+            y: viewport.height - item.transform[5],
+            width: item.width,
+            height: item.height,
+            fontSize: item.height,
+            fontName: item.fontName,
+            transform: item.transform,
+            boundingBox: {
+              left: item.transform[4] - 2,
+              top: (viewport.height - item.transform[5]) - item.height - 2,
+              right: item.transform[4] + item.width + 2,
+              bottom: (viewport.height - item.transform[5]) + 2
+            }
+          };
+
+          pageStructure.textElements.push(textElement);
+
+          // Group text into logical blocks (lines/paragraphs)
+          if (!currentBlock || shouldStartNewBlock(currentBlock, textElement)) {
+            if (currentBlock) {
+              pageStructure.blocks.push(currentBlock);
+            }
+            currentBlock = {
+              id: `block-${pageNum}-${pageStructure.blocks.length}`,
+              type: 'text-block',
+              elements: [textElement],
+              boundingBox: { ...textElement.boundingBox },
+              content: textElement.content
+            };
+          } else {
+            currentBlock.elements.push(textElement);
+            currentBlock.content += textElement.content;
+            // Expand bounding box
+            currentBlock.boundingBox.left = Math.min(currentBlock.boundingBox.left, textElement.boundingBox.left);
+            currentBlock.boundingBox.top = Math.min(currentBlock.boundingBox.top, textElement.boundingBox.top);
+            currentBlock.boundingBox.right = Math.max(currentBlock.boundingBox.right, textElement.boundingBox.right);
+            currentBlock.boundingBox.bottom = Math.max(currentBlock.boundingBox.bottom, textElement.boundingBox.bottom);
+          }
         });
-        setTotalPages(uploadResult.totalPages);
 
-        const sessionId = uploadResult.sessionId;
-
-        // Extract text content
-        await extractTextContent(sessionId);
-
-        // Extract form fields
-        await extractFormFields(sessionId);
-
-        setStatus("editor");
-      } else {
-        throw new Error(uploadResult.error || "Upload failed");
-      }
-    } catch (err) {
-      console.error("Upload error:", err);
-      alert("Upload failed: " + err.message);
-      setStatus("upload");
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  // ===========================
-  // Extract text content - FIXED
-  // ===========================
-  const extractTextContent = async (sessionId) => {
-    try {
-      const response = await fetch(
-        `${API_BASE_URL}/tools/pdf-editor/extract-text`,
-        {
-          method: "POST",
-          body: JSON.stringify({ sessionId }),
-          headers: { "Content-Type": "application/json" },
+        // Add the last block
+        if (currentBlock) {
+          pageStructure.blocks.push(currentBlock);
         }
-      );
 
-      if (response.ok) {
-        const result = await response.json();
-        setTextContent(result.text || []);
-      } else {
-        console.warn("Text extraction failed, continuing without text...");
+        structure.pages.push(pageStructure);
       }
-    } catch (err) {
-      console.error("Text extraction error:", err);
+
+      structure.fonts = Array.from(structure.fonts);
+      return structure;
+    } catch (error) {
+      console.error('Error parsing PDF structure:', error);
+      return structure;
     }
   };
 
-  // ===========================
-  // Extract form fields - FIXED
-  // ===========================
-  const extractFormFields = async (sessionId) => {
+  // Helper function to determine text grouping
+  const shouldStartNewBlock = (currentBlock, newElement) => {
+    const lastElement = currentBlock.elements[currentBlock.elements.length - 1];
+    
+    // Start new block if vertical gap is large (likely new line)
+    const verticalGap = Math.abs(newElement.y - lastElement.y);
+    if (verticalGap > lastElement.height * 1.5) {
+      return true;
+    }
+    
+    // Start new block if horizontal position suggests new line
+    if (newElement.x < lastElement.x - lastElement.width) {
+      return true;
+    }
+    
+    return false;
+  };
+
+  // Enhanced rendering with structured content overlay
+  const renderPageWithStructure = async (pageNum, scaleValue = scale) => {
+    if (!pdfDoc || !canvasRef.current) return;
+
     try {
-      const response = await fetch(
-        `${API_BASE_URL}/tools/pdf-editor/extract-forms/${sessionId}`
-      );
+      const page = await pdfDoc.getPage(pageNum);
+      const viewport = page.getViewport({ scale: scaleValue });
+      const canvas = canvasRef.current;
+      const context = canvas.getContext('2d');
 
-      if (response.ok) {
-        const result = await response.json();
-        setFormFields(result.formFields || []);
-      } else {
-        console.warn("Form extraction failed, continuing without forms...");
-      }
-    } catch (err) {
-      console.error("Form extraction error:", err);
+      // Set canvas dimensions
+      canvas.height = viewport.height;
+      canvas.width = viewport.width;
+
+      // Clear canvas with white background
+      context.fillStyle = 'white';
+      context.fillRect(0, 0, canvas.width, canvas.height);
+
+      const renderContext = {
+        canvasContext: context,
+        viewport: viewport,
+      };
+
+      // Render the PDF page
+      await page.render(renderContext).promise;
+      
+      // Apply user edits
+      applyEditsToCanvas(context, pageNum);
+
+    } catch (error) {
+      console.error('Error rendering page:', error);
     }
   };
 
-  // ===========================
-  // Text selection
-  // ===========================
-  const handleTextSelection = () => {
-    const selection = window.getSelection();
-    if (selection.toString().trim()) {
-      const range = selection.getRangeAt(0);
-      const rect = range.getBoundingClientRect();
-      const container = containerRef.current;
-
-      if (container) {
-        const containerRect = container.getBoundingClientRect();
-        setSelectedText({
-          text: selection.toString(),
-          x: rect.left - containerRect.left,
-          y: rect.top - containerRect.top,
-          width: rect.width,
-          height: rect.height,
-          page: currentPage,
-        });
+  // Apply visual edits to canvas
+  const applyEditsToCanvas = (context, pageNum) => {
+    const pageEdits = edits.filter(edit => edit.page === pageNum);
+    
+    pageEdits.forEach(edit => {
+      context.save();
+      
+      switch (edit.type) {
+        case "add-text":
+          context.font = `${edit.fontSize || 16}px Arial`;
+          context.fillStyle = edit.color || "#000000";
+          context.fillText(edit.content, edit.x, edit.y);
+          break;
+          
+        case "modify-text":
+          // Modified text is handled in the structure, but we can highlight it
+          if (edit.isCurrentEdit) {
+            context.fillStyle = 'rgba(255, 255, 0, 0.3)';
+            context.fillRect(edit.x - 2, edit.y - edit.fontSize - 2, 
+                           edit.width + 4, edit.fontSize + 4);
+          }
+          break;
+          
+        case "image":
+          if (edit.imageData) {
+            const img = new Image();
+            img.onload = () => {
+              context.drawImage(img, edit.x, edit.y, edit.width || 200, edit.height || 150);
+            };
+            img.src = edit.imageData;
+          }
+          break;
+          
+        default:
+          break;
       }
-    }
+      
+      context.restore();
+    });
   };
 
-  // ===========================
-  // Modify selected text
-  // ===========================
-  const handleModifyText = () => {
-    if (!selectedText) {
-      alert("Please select text first");
+  // Load PDF and parse structure
+  const loadPdfForEditing = async (file) => {
+    if (!pdfjsLib) {
+      console.warn('PDF.js not loaded yet');
       return;
     }
-    const newText = prompt("Modify text:", selectedText.text);
-    if (newText && newText !== selectedText.text) {
-      addEdit("modify-text", {
-        originalText: selectedText.text,
-        newText,
-        x: selectedText.x,
-        y: selectedText.y,
-        page: selectedText.page,
-      });
-      setSelectedText(null);
-      window.getSelection().removeAllRanges();
+
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      
+      // Parse PDF structure
+      const structure = await parsePDFStructure(pdf);
+      setPdfStructure(structure);
+      setPdfDoc(pdf);
+      setTotalPages(pdf.numPages);
+      setCurrentPage(1);
+      
+      // Render first page
+      await renderPageWithStructure(1, scale);
+    } catch (error) {
+      console.error('Error loading PDF:', error);
+      alert('Error loading PDF: ' + error.message);
     }
   };
 
-  // ===========================
+  // Handle page change
+  useEffect(() => {
+    if (pdfDoc && currentPage) {
+      renderPageWithStructure(currentPage, scale);
+    }
+  }, [currentPage, pdfDoc]);
+
+  // Handle scale change
+  useEffect(() => {
+    if (pdfDoc && currentPage) {
+      renderPageWithStructure(currentPage, scale);
+    }
+  }, [scale]);
+
+  // Enhanced click handler for element selection
+  const handleCanvasClick = (event) => {
+    if (activeTool !== "select") return;
+    
+    const canvas = canvasRef.current;
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const x = (event.clientX - rect.left) * scaleX;
+    const y = (event.clientY - rect.top) * scaleY;
+
+    // Find clicked element in current page structure
+    const currentPageStructure = pdfStructure.pages.find(p => p.pageNumber === currentPage);
+    if (!currentPageStructure) return;
+
+    // Check text elements first
+    const clickedElement = currentPageStructure.textElements.find(element => {
+      const bbox = element.boundingBox;
+      return x >= bbox.left && x <= bbox.right &&
+             y >= bbox.top && y <= bbox.bottom;
+    });
+
+    if (clickedElement) {
+      setSelectedElement(clickedElement);
+      console.log('Selected text element:', clickedElement);
+    } else {
+      setSelectedElement(null);
+    }
+  };
+
+  // Inline text editing
+  const handleInlineEdit = () => {
+    if (!selectedElement) {
+      alert("Please select text from the PDF first by clicking on it");
+      return;
+    }
+
+    const newText = prompt("Edit text:", selectedElement.content);
+    if (newText !== null && newText !== selectedElement.content) {
+      // Update the PDF structure
+      const updatedPages = pdfStructure.pages.map(page => {
+        if (page.pageNumber === currentPage) {
+          const updatedTextElements = page.textElements.map(element =>
+            element.id === selectedElement.id 
+              ? { ...element, content: newText }
+              : element
+          );
+          
+          // Update blocks that contain this element
+          const updatedBlocks = page.blocks.map(block => ({
+            ...block,
+            elements: block.elements.map(el =>
+              el.id === selectedElement.id ? { ...el, content: newText } : el
+            ),
+            content: block.elements.map(el => 
+              el.id === selectedElement.id ? newText : el.content
+            ).join('')
+          }));
+
+          return { ...page, textElements: updatedTextElements, blocks: updatedBlocks };
+        }
+        return page;
+      });
+
+      setPdfStructure({ ...pdfStructure, pages: updatedPages });
+
+      // Add to edits for backend processing
+      addEdit("modify-text", {
+        originalText: selectedElement.originalContent,
+        newText: newText,
+        x: selectedElement.x,
+        y: selectedElement.y,
+        page: currentPage,
+        objectId: selectedElement.id,
+        fontSize: selectedElement.fontSize,
+        width: selectedElement.width
+      });
+
+      // Re-render to show changes
+      renderPageWithStructure(currentPage, scale);
+    }
+  };
+
   // Add new text
-  // ===========================
   const handleAddText = () => {
     const text = prompt("Enter new text:");
     if (text && text.trim()) {
@@ -214,16 +401,15 @@ const PDFEditor = () => {
         content: text,
         x: 50,
         y: 100,
-        fontSize: 12,
+        fontSize: 16,
         color: "#000000",
         page: currentPage,
       });
+      renderPageWithStructure(currentPage, scale);
     }
   };
 
-  // ===========================
   // Insert image
-  // ===========================
   const handleInsertImage = (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -243,44 +429,94 @@ const PDFEditor = () => {
         height: 150,
         page: currentPage,
       });
+      renderPageWithStructure(currentPage, scale);
     };
     reader.readAsDataURL(file);
     
-    // Reset file input
     event.target.value = "";
   };
 
-  // ===========================
-  // Form field change
-  // ===========================
-  const handleFormFieldChange = (fieldId, value) => {
-    setFormFields((prev) =>
-      prev.map((f) => (f.id === fieldId ? { ...f, value } : f))
-    );
-    // Also store as edit for backend
-    addEdit("form-field", { id: fieldId, value, page: currentPage });
-  };
-
-  // ===========================
   // Add edit
-  // ===========================
   const addEdit = (type, data) => {
     const newEdit = { 
       id: Date.now() + Math.random(), 
       type, 
-      ...data 
+      ...data
     };
     setEdits((prev) => [...prev, newEdit]);
   };
 
-  // ===========================
-  // Apply edits - FIXED
-  // ===========================
+  // Upload PDF
+  const handleFileUpload = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    
+    if (file.type !== "application/pdf") {
+      alert("Please select a PDF file.");
+      return;
+    }
+
+    setIsProcessing(true);
+    setStatus("processing");
+
+    try {
+      const formData = new FormData();
+      formData.append("pdfFile", file);
+
+      // Upload to backend
+      const uploadResponse = await fetch(
+        `${API_BASE_URL}/tools/pdf-editor/upload`,
+        { 
+          method: "POST", 
+          body: formData 
+        }
+      );
+
+      let uploadResult;
+      if (uploadResponse.ok) {
+        uploadResult = await uploadResponse.json();
+        setFileData(uploadResult);
+      } else {
+        console.warn('Backend upload failed, loading PDF locally');
+        uploadResult = { success: true, totalPages: 0 };
+      }
+
+      // Load PDF for editing with structure parsing
+      await loadPdfForEditing(file);
+
+      setStatus("editor");
+    } catch (err) {
+      console.error("Upload error:", err);
+      alert("Error processing PDF: " + err.message);
+      setStatus("upload");
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Apply edits to backend
   const applyEdits = async () => {
     if (!fileData) return;
     setIsProcessing(true);
 
     try {
+      // Collect all text modifications from structure
+      const textModifications = pdfStructure.pages.flatMap(page =>
+        page.textElements
+          .filter(element => element.content !== element.originalContent)
+          .map(element => ({
+            type: "modify-text",
+            originalText: element.originalContent,
+            newText: element.content,
+            x: element.x,
+            y: element.y,
+            page: page.pageNumber,
+            objectId: element.id,
+            fontSize: element.fontSize,
+            width: element.width
+          }))
+      );
+
       const response = await fetch(
         `${API_BASE_URL}/tools/pdf-editor/apply-edits`,
         {
@@ -288,22 +524,20 @@ const PDFEditor = () => {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             sessionId: fileData.sessionId,
-            edits: edits.filter(edit => edit.type !== 'form-field'), // Filter form fields
-            formFields: formFields.filter(field => field.value) // Only fields with values
+            edits: [...edits, ...textModifications]
           }),
         }
       );
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(errorText || "Failed to apply edits");
-      }
-
-      const result = await response.json();
-      if (result.success) {
-        alert("PDF edited successfully! You can now download the edited version.");
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success) {
+          alert("PDF edited successfully! You can now download the edited version.");
+        } else {
+          throw new Error(result.error || "Apply edits failed");
+        }
       } else {
-        throw new Error(result.error || "Apply edits failed");
+        throw new Error("Failed to apply edits");
       }
     } catch (err) {
       console.error("Apply edits error:", err);
@@ -313,9 +547,7 @@ const PDFEditor = () => {
     }
   };
 
-  // ===========================
-  // Download PDF - FIXED
-  // ===========================
+  // Download PDF
   const downloadEditedPDF = async () => {
     if (!fileData) return;
 
@@ -324,118 +556,41 @@ const PDFEditor = () => {
         `${API_BASE_URL}/tools/pdf-editor/download/${fileData.sessionId}`
       );
       
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(errorText || "Download failed");
+      if (response.ok) {
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = "edited-document.pdf";
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+      } else {
+        throw new Error("Download failed");
       }
-
-      const blob = await response.blob();
-      
-      // Check if blob is valid PDF
-      if (blob.type !== 'application/pdf') {
-        throw new Error("Downloaded file is not a valid PDF");
-      }
-      
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = "edited-document.pdf";
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
     } catch (err) {
       console.error("Download error:", err);
       alert("Download failed: " + err.message);
     }
   };
 
-  // ===========================
-  // Render form fields
-  // ===========================
-  const renderFormFields = () => {
-    if (!formFields || formFields.length === 0) return null;
-
-    return (
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mt-4">
-        <h4 className="font-semibold text-blue-800 mb-3">Form Fields:</h4>
-        <div className="space-y-3">
-          {formFields.map((field) => (
-            <div key={field.id} className="flex items-center">
-              <label className="text-sm font-medium text-blue-700 w-32 truncate">
-                {field.name || field.id}:
-              </label>
-              <input
-                type="text"
-                className="flex-1 px-3 py-1 border border-blue-300 rounded text-sm"
-                placeholder={`Enter ${field.type || "value"}`}
-                onChange={(e) => handleFormFieldChange(field.id, e.target.value)}
-                defaultValue={field.value || ""}
-              />
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  };
-
-  // ===========================
-  // Render text content
-  // ===========================
-  const renderTextContent = () => {
-    if (!textContent || textContent.length === 0) return null;
-
-    const displayText = Array.isArray(textContent) ? textContent : [textContent];
-
-    return (
-      <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mt-4">
-        <h4 className="font-semibold text-gray-800 mb-2">Text Content:</h4>
-        <div
-          className="text-sm text-gray-600 max-h-32 overflow-y-auto leading-relaxed cursor-text"
-          onMouseUp={handleTextSelection}
-        >
-          {displayText.map((item, index) => (
-            <span key={index}>{typeof item === 'string' ? item : item.text} </span>
-          ))}
-        </div>
-        {selectedText && (
-          <div className="mt-2 p-2 bg-yellow-100 border border-yellow-300 rounded">
-            <p className="text-sm text-yellow-800">
-              Selected: "{selectedText.text}"
-            </p>
-            <button
-              onClick={handleModifyText}
-              className="mt-1 bg-yellow-500 text-white px-3 py-1 rounded text-sm hover:bg-yellow-600"
-            >
-              Modify This Text
-            </button>
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  // ===========================
   // Toolbar buttons
-  // ===========================
   const toolsList = [
     { name: "select", icon: MousePointer, hint: "Select Text" },
-    { name: "modify-text", icon: Edit, hint: "Modify Selected Text" },
+    { name: "modify-text", icon: Edit, hint: "Edit Selected Text" },
     { name: "add-text", icon: Type, hint: "Add New Text" },
     { name: "image", icon: Image, hint: "Insert Image" },
-    { name: "forms", icon: FileText, hint: "Fill Forms" },
   ];
 
-  // ===========================
   // Render upload screen
-  // ===========================
   const renderUploadScreen = () => (
     <div className="flex flex-col items-center justify-center min-h-[60vh] p-4">
       <div className="bg-white border-2 border-dashed border-blue-300 rounded-2xl p-8 max-w-md w-full text-center">
         <File className="w-16 h-16 mx-auto text-blue-500 mb-4" />
-        <h2 className="text-2xl font-bold text-gray-800 mb-2">Advanced PDF Editor</h2>
+        <h2 className="text-2xl font-bold text-gray-800 mb-2">PDF Editor</h2>
         <p className="text-gray-600 mb-6">
-          Modify text, add content, insert images, and fill forms
+          Edit PDF text content directly with structured parsing
         </p>
 
         <input
@@ -451,30 +606,26 @@ const PDFEditor = () => {
           disabled={isProcessing}
         >
           <UploadCloud className="w-5 h-5 mr-2" />
-          {isProcessing ? "Uploading..." : "Choose PDF File"}
+          {isProcessing ? "Processing..." : "Choose PDF File"}
         </button>
       </div>
     </div>
   );
 
-  // ===========================
   // Render processing screen
-  // ===========================
   const renderProcessingScreen = () => (
     <div className="flex flex-col items-center justify-center min-h-[60vh] p-4">
       <div className="bg-white rounded-2xl p-8 max-w-md w-full text-center">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
         <h3 className="text-lg font-semibold text-gray-800 mb-2">
-          {status === "processing" ? "Processing PDF..." : "Applying Edits..."}
+          Parsing PDF Structure...
         </h3>
-        <p className="text-gray-600">Please wait while we process your file</p>
+        <p className="text-gray-600">Extracting text, layout, and metadata</p>
       </div>
     </div>
   );
 
-  // ===========================
   // Render editor
-  // ===========================
   const renderEditor = () => (
     <div className="flex flex-col h-screen bg-gray-50">
       {/* Toolbar */}
@@ -494,7 +645,6 @@ const PDFEditor = () => {
               </button>
             ))}
 
-            {/* Image Upload */}
             <input
               ref={fileInputImageRef}
               type="file"
@@ -575,27 +725,95 @@ const PDFEditor = () => {
       {/* Main Editor Area */}
       <div className="flex-1 flex overflow-hidden">
         {/* PDF Viewer */}
-        <div className="flex-1 bg-gray-200 p-4 overflow-auto flex justify-center">
+        <div className="flex-1 bg-gray-200 p-4 overflow-auto flex justify-center items-start">
           <div
             ref={containerRef}
             className="bg-white shadow-2xl rounded-lg overflow-hidden relative"
-            style={{ transform: `scale(${scale})`, transformOrigin: "center center" }}
+            style={{ 
+              transform: `scale(${scale})`, 
+              transformOrigin: "center center",
+              maxWidth: '100%'
+            }}
           >
-            {pdfBlobUrl && (
-              <iframe
-                src={pdfBlobUrl}
-                className="w-full h-full min-h-[800px] border-0"
-                title="PDF Viewer"
-                type="application/pdf"
+            <canvas
+              ref={canvasRef}
+              className="block border border-gray-300 cursor-crosshair"
+              onClick={handleCanvasClick}
+              style={{ 
+                display: 'block',
+                maxWidth: '100%',
+                height: 'auto'
+              }}
+            />
+            
+            {/* Interactive overlay for text selection */}
+            {pdfStructure.pages.find(p => p.pageNumber === currentPage)?.textElements.map(element => (
+              <div
+                key={element.id}
+                className={`absolute border border-transparent hover:border-blue-400 hover:bg-blue-50 hover:bg-opacity-30 transition-all ${
+                  selectedElement?.id === element.id ? 'border-blue-500 bg-blue-100 bg-opacity-50' : ''
+                }`}
+                style={{
+                  left: `${element.boundingBox.left}px`,
+                  top: `${element.boundingBox.top}px`,
+                  width: `${element.boundingBox.right - element.boundingBox.left}px`,
+                  height: `${element.boundingBox.bottom - element.boundingBox.top}px`,
+                  pointerEvents: 'none' // Let clicks pass through to canvas
+                }}
               />
-            )}
+            ))}
           </div>
         </div>
 
-        {/* Editing Panel */}
+        {/* Editing Panel - UPDATED */}
         <div className="w-80 bg-white border-l border-gray-200 overflow-y-auto">
           <div className="p-4">
-            <h3 className="font-semibold text-gray-800 mb-4">Editing Tools</h3>
+            <h3 className="font-semibold text-gray-800 mb-4">PDF Structure & Editing</h3>
+
+            {/* PDF Metadata */}
+            {pdfStructure.metadata && (
+              <div className="mb-4 p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                <h4 className="font-semibold text-gray-700 mb-2">Document Info</h4>
+                <div className="text-xs text-gray-600 space-y-1">
+                  <div><strong>Title:</strong> {pdfStructure.metadata.title}</div>
+                  <div><strong>Author:</strong> {pdfStructure.metadata.author}</div>
+                  {pdfStructure.metadata.creator && (
+                    <div><strong>Creator:</strong> {pdfStructure.metadata.creator}</div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Selected Text Info */}
+            {selectedElement && (
+              <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <h4 className="font-semibold text-blue-800 mb-2">Selected Text</h4>
+                <p className="text-sm text-blue-700 mb-2">"{selectedElement.content}"</p>
+                <div className="text-xs text-blue-600 mb-2">
+                  <div>Font: {selectedElement.fontName || 'Unknown'}</div>
+                  <div>Size: {selectedElement.fontSize?.toFixed(1)}px</div>
+                  <div>Position: ({selectedElement.x.toFixed(1)}, {selectedElement.y.toFixed(1)})</div>
+                </div>
+                <button
+                  onClick={handleInlineEdit}
+                  className="w-full bg-blue-500 text-white px-3 py-2 rounded text-sm hover:bg-blue-600"
+                >
+                  Edit This Text
+                </button>
+              </div>
+            )}
+
+            {/* Page Structure Overview */}
+            <div className="mb-4">
+              <h4 className="font-semibold text-gray-700 mb-2">
+                Page {currentPage} Structure
+              </h4>
+              <div className="text-xs text-gray-600 space-y-2">
+                <div><strong>Text Elements:</strong> {pdfStructure.pages.find(p => p.pageNumber === currentPage)?.textElements.length || 0}</div>
+                <div><strong>Text Blocks:</strong> {pdfStructure.pages.find(p => p.pageNumber === currentPage)?.blocks.length || 0}</div>
+                <div><strong>Fonts Used:</strong> {pdfStructure.fonts.length}</div>
+              </div>
+            </div>
 
             {/* Current Edits */}
             <div className="mb-6">
@@ -609,25 +827,20 @@ const PDFEditor = () => {
                       <span className="flex items-center truncate">
                         <span
                           className={`w-2 h-2 rounded mr-2 ${
-                            edit.type === "modify-text"
-                              ? "bg-purple-500"
-                              : edit.type === "add-text"
-                              ? "bg-blue-500"
-                              : edit.type === "image"
-                              ? "bg-green-500"
-                              : edit.type === "form-field"
-                              ? "bg-orange-500"
-                              : "bg-gray-500"
+                            edit.type === "modify-text" ? "bg-purple-500" :
+                            edit.type === "add-text" ? "bg-blue-500" :
+                            edit.type === "image" ? "bg-green-500" : "bg-gray-500"
                           }`}
                         ></span>
-                        {edit.type === "modify-text" &&
-                          `Modify: "${edit.originalText?.substring(0, 20)}..." → "${edit.newText?.substring(0, 20)}..."`}
+                        {edit.type === "modify-text" && `Edit: "${edit.originalText?.substring(0, 20)}..."`}
                         {edit.type === "add-text" && `Add: "${edit.content?.substring(0, 30)}..."`}
                         {edit.type === "image" && `Insert Image`}
-                        {edit.type === "form-field" && `Form: ${edit.value}`}
                       </span>
                       <button
-                        onClick={() => setEdits((prev) => prev.filter((e) => e.id !== edit.id))}
+                        onClick={() => {
+                          setEdits((prev) => prev.filter((e) => e.id !== edit.id));
+                          renderPageWithStructure(currentPage, scale);
+                        }}
                         className="text-red-500 hover:text-red-700 text-xs"
                       >
                         Remove
@@ -657,10 +870,6 @@ const PDFEditor = () => {
                 Insert Image
               </button>
             </div>
-
-            {/* Render text & form */}
-            {renderTextContent()}
-            {renderFormFields()}
           </div>
         </div>
       </div>
@@ -672,7 +881,7 @@ const PDFEditor = () => {
       <header className="bg-white shadow-sm border-b">
         <div className="max-w-7xl mx-auto px-4 py-4 text-center">
           <h1 className="text-2xl font-bold text-gray-900">Advanced PDF Editor</h1>
-          <p className="text-gray-600 mt-2">Modify text, insert images, fill forms - Real PDF content editing</p>
+          <p className="text-gray-600 mt-2">Edit PDF content with structured parsing and inline editing</p>
         </div>
       </header>
 
