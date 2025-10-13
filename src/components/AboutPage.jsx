@@ -57,7 +57,7 @@ const AboutPage = () => {
   const useCases = [
     {
       industry: 'Education',
-      description: 'Students and educators use PDF Pro for research papers, assignments, and academic publications',
+      description: 'Students and educators usepdfworks for research papers, assignments, and academic publications',
       icon: '📚'
     },
     {
@@ -86,7 +86,7 @@ const AboutPage = () => {
         className="text-center py-16"
       >
 
-        <h1 className="text-6xl font-bold gradient-text mb-6">About PDF Pro</h1>
+        <h1 className="text-6xl font-bold gradient-text mb-6">Aboutpdfworks</h1>
         <p className="mt-4 text-2xl text-gray-600 max-w-4xl mx-auto leading-relaxed">
           Born in 2025 to revolutionize document management. We're building the future of PDF tools
           with cutting-edge technology and user-centric design from the ground up.
@@ -162,7 +162,7 @@ const AboutPage = () => {
           <h2 className="text-4xl font-bold mb-6">Our Beginning</h2>
           <div className="text-gray-700 space-y-6 text-lg leading-relaxed">
             <p>
-              PDF Pro was founded in 2025 with a bold vision: to create the most intuitive and powerful
+             pdfworks was founded in 2025 with a bold vision: to create the most intuitive and powerful
               document management platform from scratch. Unlike legacy solutions burdened by outdated
               technology, we built our foundation on modern architecture and user-first principles.
             </p>
@@ -267,7 +267,7 @@ const AboutPage = () => {
       <section className="py-16">
         <h2 className="text-4xl font-bold text-center mb-4">Trusted Across Industries</h2>
         <p className="text-xl text-gray-600 text-center mb-12 max-w-3xl mx-auto">
-          PDF Pro serves diverse needs across multiple sectors with tailored solutions
+         pdfworks serves diverse needs across multiple sectors with tailored solutions
         </p>
         <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
           {useCases.map((useCase, index) => (

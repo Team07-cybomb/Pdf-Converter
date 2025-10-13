@@ -12,6 +12,7 @@ import {
   Eye,
   EyeOff,
 } from "lucide-react";
+const API_URL = import.meta.env.VITE_API_URL;
 
 const tools = [
   {
@@ -46,6 +47,7 @@ const OrganizeTools = () => {
   const [splitRange, setSplitRange] = useState("");
   const [rotationSide, setRotationSide] = useState("90");
   const [showPreview, setShowPreview] = useState(false);
+  const [fileSaved, setFileSaved] = useState(false);
 
   const handleToolClick = (tool) => {
     setSelectedTool(tool);
@@ -55,6 +57,7 @@ const OrganizeTools = () => {
     setSplitRange("");
     setRotationSide("90");
     setShowPreview(false);
+    setFileSaved(false);
   };
 
   const handleFileChange = (e) => {
@@ -69,6 +72,71 @@ const OrganizeTools = () => {
     setRotationSide(e.target.value);
   };
 
+  // NEW: Function to save organized file to My Files
+  const saveToMyFiles = async (fileBlob, filename, toolUsed) => {
+    try {
+      // Convert blob to base64 for sending to backend
+      const reader = new FileReader();
+
+      return new Promise((resolve, reject) => {
+        reader.onloadend = async () => {
+          const base64data = reader.result;
+
+          try {
+            const saveResponse = await fetch(
+              `${API_URL}/api/files/save-converted`,
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  originalName: filename,
+                  fileBuffer: base64data,
+                  mimetype: fileBlob.type,
+                  toolUsed: toolUsed,
+                }),
+                credentials: "include",
+              }
+            );
+
+            // Check if response is OK
+            if (!saveResponse.ok) {
+              throw new Error(`HTTP error! status: ${saveResponse.status}`);
+            }
+
+            const saveResult = await saveResponse.json();
+
+            if (saveResult.success) {
+              console.log("File saved to My Files:", saveResult.file);
+              setFileSaved(true);
+              resolve(saveResult);
+            } else {
+              console.warn("Failed to save to My Files:", saveResult.error);
+              // Don't reject here - just warn and resolve anyway
+              // so processing doesn't fail if saving fails
+              resolve({ success: false, error: saveResult.error });
+            }
+          } catch (error) {
+            console.warn("Error saving to My Files:", error);
+            // Resolve instead of reject to prevent processing failure
+            resolve({ success: false, error: error.message });
+          }
+        };
+
+        reader.onerror = () => {
+          console.warn("File reading failed for My Files save");
+          resolve({ success: false, error: "File reading failed" });
+        };
+
+        reader.readAsDataURL(fileBlob);
+      });
+    } catch (error) {
+      console.warn("Save to My Files error:", error);
+      return { success: false, error: error.message };
+    }
+  };
+
   const handleProcessPDF = async () => {
     if (selectedTool.id === "split" && !splitRange) {
       setError("Please enter the pages to split.");
@@ -81,6 +149,7 @@ const OrganizeTools = () => {
 
     setProcessing(true);
     setError(null);
+    setFileSaved(false);
 
     const formData = new FormData();
     files.forEach((file) => {
@@ -97,12 +166,11 @@ const OrganizeTools = () => {
 
     try {
       const response = await fetch(
-        `http://localhost:5000/api/organize/${
-          selectedTool.id
-        }?${queryParams.toString()}`,
+        `${API_URL}/api/organize/${selectedTool.id}?${queryParams.toString()}`,
         {
           method: "POST",
           body: formData,
+          credentials: "include",
         }
       );
 
@@ -114,6 +182,27 @@ const OrganizeTools = () => {
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       setDownloadUrl(url);
+
+      // NEW: Check if file was saved automatically by backend
+      const fileSavedByBackend =
+        response.headers.get("X-File-Saved") === "true";
+
+      if (fileSavedByBackend) {
+        setFileSaved(true);
+        console.log("File automatically saved to My Files by backend");
+      } else {
+        // If backend didn't save it, save it from frontend
+        try {
+          await saveToMyFiles(
+            blob,
+            `${selectedTool.id}-output.pdf`,
+            selectedTool.id
+          );
+        } catch (saveError) {
+          console.warn("Failed to save to My Files:", saveError);
+          // Don't fail the processing if saving fails
+        }
+      }
     } catch (err) {
       console.error("Processing failed:", err);
       setError("Failed to process PDF. " + err.message);
@@ -146,6 +235,16 @@ const OrganizeTools = () => {
         {downloadUrl ? (
           <div className="text-center mt-8">
             <h3 className="text-lg font-bold mb-4">Your PDF is ready! 🎉</h3>
+
+            {/* File Saved Status */}
+            {fileSaved && (
+              <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+                <p className="text-green-700 text-sm font-medium">
+                  ✅ File automatically saved to <strong>My Files</strong>{" "}
+                  section
+                </p>
+              </div>
+            )}
 
             {/* Preview Toggle */}
             <div className="flex justify-center mb-4">
@@ -202,6 +301,7 @@ const OrganizeTools = () => {
                   setSplitRange("");
                   setRotationSide("90");
                   setShowPreview(false);
+                  setFileSaved(false);
                 }}
                 className="px-6 py-2 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-full transition-colors"
               >
