@@ -50,7 +50,7 @@ const Header = () => {
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-600 to-pink-600 flex items-center justify-center">
               <FileText className="h-6 w-6 text-white" />
             </div>
-            <h1 className="text-2xl font-bold gradient-text">PDF Pro</h1>
+            <h1 className="text-2xl font-bold gradient-text">PDF Works</h1>
           </Link>
           <nav className="hidden md:flex items-center gap-2">
             {navLinks.map(link => (

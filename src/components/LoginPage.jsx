@@ -189,7 +189,7 @@ const LoginPage = () => {
       <Helmet>
         <title>
           {forgotPassword ? "Reset Password" : isLogin ? "Login" : "Sign Up"} -
-          PDF Pro
+         pdfworks
         </title>
       </Helmet>
 

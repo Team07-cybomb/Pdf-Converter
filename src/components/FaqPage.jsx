@@ -10,7 +10,7 @@ import {
 const FaqPage = () => {
   const faqs = [
     {
-      question: "Is PDF Pro free to use?",
+      question: "Ispdfworks free to use?",
       answer: "Yes, we offer a generous free plan that includes access to our basic PDF tools with daily usage limits. For unlimited access and advanced features, you can upgrade to our Pro or Business plans."
     },
     {
@@ -30,7 +30,7 @@ const FaqPage = () => {
       answer: "OCR (Optical Character Recognition) is a technology that converts different types of documents, such as scanned paper documents, PDF files or images captured by a digital camera into editable and searchable data. Our tool can recognize text in multiple languages."
     },
     {
-      question: "Can I use PDF Pro on my mobile device?",
+      question: "Can I usepdfworks on my mobile device?",
       answer: "Absolutely! Our web application is fully responsive and works great on all modern mobile browsers. We are also developing dedicated mobile apps for iOS and Android for an even better on-the-go experience."
     }
   ];

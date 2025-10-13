@@ -6,7 +6,9 @@ const { promisify } = require("util");
 const execAsync = promisify(exec);
 
 // LibreOffice path
+// const LIBREOFFICE_PATH = "/usr/bin/libreoffice";
 const LIBREOFFICE_PATH = "C:\\Program Files\\LibreOffice\\program\\soffice.exe";
+
 
 // Helper function to ensure uploads directory exists
 const ensureUploadsDir = async () => {

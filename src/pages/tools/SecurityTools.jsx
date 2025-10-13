@@ -57,7 +57,7 @@ const SecurityTools = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  // 2FA PDF Protection states
+  // 2FApdfworkstection states
   const [twoFactorCode, setTwoFactorCode] = useState("");
   const [qrCodeUrl, setQrCodeUrl] = useState("");
   const [secretKey, setSecretKey] = useState("");
@@ -212,7 +212,7 @@ const SecurityTools = () => {
     }
   };
 
-  // 2FA PDF Protection Functions
+  // 2FApdfworkstection Functions
   const protectPDFWith2FA = async () => {
     if (!files.length) {
       setError("Please select a PDF file to protect");
@@ -247,7 +247,7 @@ const SecurityTools = () => {
         "PDF protected with 2FA successfully! Scan the QR code with your authenticator app."
       );
     } catch (err) {
-      console.error("2FA PDF protection failed:", err);
+      console.error("2FApdfworkstection failed:", err);
       setError(err.message);
     } finally {
       setProcessing(false);
@@ -705,7 +705,7 @@ const SecurityTools = () => {
           </div>
         )}
 
-        {/* 2FA PDF Protection Tool */}
+        {/* 2FApdfworkstection Tool */}
         {selectedTool.id === "auth" && (
           <div className="mt-8 space-y-6">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -904,7 +904,7 @@ const SecurityTools = () => {
                   <div className="p-4 border border-green-200 rounded-xl bg-green-50">
                     <h3 className="text-lg font-semibold mb-3 text-green-800 flex items-center">
                       <ShieldCheck className="h-5 w-5 mr-2" />
-                      New PDF Protected Successfully!
+                      Newpdfworkstected Successfully!
                     </h3>
                     <div className="flex flex-col items-center">
                       <img

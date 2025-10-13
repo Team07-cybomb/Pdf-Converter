@@ -1,26 +1,26 @@
-import React from 'react';
-import { Link } from 'react-router-dom';
-import { FileText, Twitter, Linkedin, Facebook } from 'lucide-react';
+import React from "react";
+import { Link } from "react-router-dom";
+import { FileText, Twitter, Linkedin, Facebook } from "lucide-react";
 
 const Footer = () => {
   const sections = {
-    'Product': [
-      { name: 'Home', path: '/' },
-      { name: 'Tools', path: '/tools' },
-      { name: 'Pricing', path: '/pricing' },
-      { name: 'FAQ', path: '/faq' },
+    Product: [
+      { name: "Home", path: "/" },
+      { name: "Tools", path: "/tools" },
+      { name: "Pricing", path: "/pricing" },
+      { name: "FAQ", path: "/faq" },
     ],
-    'Company': [
-      { name: 'About Us', path: '/about' },
-      { name: 'Contact Us', path: '/contact' },
-      { name: 'Blog', path: '/blog' },
-      { name: 'Press Release', path: '/press' },
+    Company: [
+      { name: "About Us", path: "/about" },
+      { name: "Contact Us", path: "/contact" },
+      { name: "Blog", path: "/blog" },
+      { name: "Press Release", path: "/press" },
     ],
-    'Legal': [
-      { name: 'Security', path: '/security' },
-      { name: 'Privacy Policy', path: '/privacy' },
-      { name: 'Terms & Conditions', path: '/terms' },
-      { name: 'Cookies Policy', path: '/cookies' },
+    Legal: [
+      { name: "Security", path: "/security" },
+      { name: "Privacy Policy", path: "/privacy" },
+      { name: "Terms & Conditions", path: "/terms" },
+      { name: "Cookies Policy", path: "/cookies" },
     ],
   };
 
@@ -33,13 +33,32 @@ const Footer = () => {
               <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-600 to-pink-600 flex items-center justify-center">
                 <FileText className="h-6 w-6 text-white" />
               </div>
-              <span className="text-2xl font-bold gradient-text">PDF Pro</span>
+              <span className="text-2xl font-bold gradient-text">
+                PDF Works
+              </span>
             </Link>
-            <p className="text-sm text-gray-600">The ultimate toolkit for all your PDF needs. Edit, convert, sign, and manage documents with ease.</p>
+            <p className="text-sm text-gray-600">
+              The ultimate toolkit for all your PDF needs. Edit, convert, sign,
+              and manage documents with ease.
+            </p>
             <div className="flex space-x-4">
-              <a href="#" className="text-gray-500 hover:text-purple-600"><Twitter /></a>
-              <a href="#" className="text-gray-500 hover:text-purple-600"><Linkedin /></a>
-              <a href="#" className="text-gray-500 hover:text-purple-600"><Facebook /></a>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="18"
+                height="18"
+                fill="currentColor"
+                class="bi bi-twitter-x"
+                viewBox="0 0 16 16"
+                style={{marginTop:"4px"}}
+              >
+                <path d="M12.6.75h2.454l-5.36 6.142L16 15.25h-4.937l-3.867-5.07-4.425 5.07H.316l5.733-6.57L0 .75h5.063l3.495 4.633L12.601.75Zm-.86 13.028h1.36L4.323 2.145H2.865z" />
+              </svg>
+              <a href="#" className="text-gray-500 hover:text-purple-600">
+                <Linkedin />
+              </a>
+              <a href="#" className="text-gray-500 hover:text-purple-600">
+                <Facebook />
+              </a>
             </div>
           </div>
 
@@ -47,9 +66,12 @@ const Footer = () => {
             <div key={title}>
               <p className="font-semibold text-gray-900 mb-4">{title}</p>
               <ul className="space-y-3">
-                {links.map(link => (
+                {links.map((link) => (
                   <li key={link.name}>
-                    <Link to={link.path} className="text-sm text-gray-600 hover:text-purple-600 transition-colors">
+                    <Link
+                      to={link.path}
+                      className="text-sm text-gray-600 hover:text-purple-600 transition-colors"
+                    >
                       {link.name}
                     </Link>
                   </li>
@@ -60,7 +82,9 @@ const Footer = () => {
         </div>
 
         <div className="mt-12 border-t border-gray-200 pt-8 text-center">
-          <p className="text-sm text-gray-500">&copy; {new Date().getFullYear()} PDF Pro. All rights reserved.</p>
+          <p className="text-sm text-gray-500">
+            &copy; {new Date().getFullYear()} pdfworks. All rights reserved.
+          </p>
         </div>
       </div>
     </footer>

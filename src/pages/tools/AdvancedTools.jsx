@@ -138,190 +138,119 @@ const AdvancedTools = () => {
   };
 
   return (
-    <div style={containerStyle}>
-      <h2 style={titleStyle}>⚙️ Advanced Tools</h2>
+  <div className="p-6">
+  <h2 className="text-2xl font-bold mb-6 flex items-center gap-2">⚙️ Advanced Tools</h2>
 
-      {tools.find((t) => t.id === "api-connect") && (
-        <div
-          style={{
-            ...inputContainerStyle,
-            display: "grid",
-            gridTemplateColumns: "repeat(3, 1fr)",
-            gap: "1rem",
-          }}
-        >
-          {/* API URL */}
-          <div>
-            <label style={labelStyle}>API URL:</label>
-            <input
-              type="text"
-              value={apiUrl}
-              onChange={(e) => setApiUrl(e.target.value)}
-              style={inputStyle}
-              placeholder="https://example.com/api"
-            />
-          </div>
-
-          {/* HTTP Method */}
-          <div>
-            <label style={labelStyle}>HTTP Method:</label>
-            <select
-              style={inputStyle}
-              value={method}
-              onChange={(e) => setMethod(e.target.value)}
-            >
-              <option>GET</option>
-              <option>POST</option>
-              <option>PUT</option>
-              <option>DELETE</option>
-            </select>
-          </div>
-
-          {/* Headers */}
-          <div>
-            <label style={labelStyle}>Headers (JSON, optional):</label>
-            <textarea
-              style={{ ...inputStyle, height: "45px" }}
-              value={headers}
-              onChange={(e) => setHeaders(e.target.value)}
-              placeholder='{"Authorization":"Bearer ..."}'
-            />
-          </div>
-
-          {/* Body - Full width */}
-          <div style={{ gridColumn: "1 / -1" }}>
-            <label style={labelStyle}>Body (JSON, optional):</label>
-            <textarea
-              style={{ ...inputStyle, height: "80px" }}
-              value={body}
-              onChange={(e) => setBody(e.target.value)}
-              placeholder='{"key":"value"}'
-            />
-          </div>
-        </div>
-      )}
-
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
-          gap: "1.5rem",
-        }}
-      >
-        {tools.map((tool, i) => {
-          const Icon = tool.icon;
-          return (
-            <motion.div
-              key={tool.id}
-              initial={{ opacity: 0, scale: 0.9, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              transition={{ delay: i * 0.1, type: "spring", stiffness: 100 }}
-              whileHover={{
-                scale: 1.03,
-                y: -8,
-                boxShadow: "0 20px 40px rgba(0,0,0,0.15)",
-              }}
-              whileTap={{ scale: 0.98 }}
-              onClick={() => handleToolClick(tool)}
-              style={cardStyle}
-            >
-              <div
-                className={`w-14 h-14 rounded-xl bg-gradient-to-br ${tool.color} flex items-center justify-center mb-4`}
-              >
-                <Icon className="h-7 w-7 text-white" />
-              </div>
-              <h3
-                style={{
-                  fontSize: "1.25rem",
-                  fontWeight: "700",
-                  marginBottom: "0.5rem",
-                  color: "#1e293b",
-                }}
-              >
-                {tool.name}
-              </h3>
-              <p
-                style={{
-                  fontSize: "0.875rem",
-                  color: "#64748b",
-                  lineHeight: "1.5",
-                }}
-              >
-                {tool.description}
-              </p>
-            </motion.div>
-          );
-        })}
+  {tools.find((t) => t.id === "api-connect") && (
+    <div className="grid gap-4 md:grid-cols-3">
+      {/* API URL */}
+      <div className="flex flex-col">
+        <label className="mb-1 font-medium text-gray-700">API URL:</label>
+        <input
+          type="text"
+          value={apiUrl}
+          onChange={(e) => setApiUrl(e.target.value)}
+          className="border border-gray-300 rounded-md p-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          placeholder="https://example.com/api"
+        />
       </div>
 
-      <div style={statusStyle}>
-        {loading && (
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "0.5rem",
-              color: "#2563eb",
-              fontWeight: "500",
-            }}
-          >
-            <motion.div
-              animate={{ rotate: 360 }}
-              transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-              style={{
-                width: "16px",
-                height: "16px",
-                border: "2px solid #2563eb",
-                borderTop: "2px solid transparent",
-                borderRadius: "50%",
-              }}
-            />
-            Processing your request...
-          </div>
-        )}
-        {error && (
-          <div
-            style={{
-              color: "#dc2626",
-              fontWeight: "500",
-              padding: "0.75rem",
-              backgroundColor: "#fef2f2",
-              borderRadius: "0.5rem",
-              border: "1px solid #fecaca",
-            }}
-          >
-            ❌ {error}
-          </div>
-        )}
-        {result && (
-          <div>
-            <h4
-              style={{
-                fontSize: "1.125rem",
-                fontWeight: "600",
-                marginBottom: "0.5rem",
-                color: "#059669",
-              }}
-            >
-              ✅ Result:
-            </h4>
-            <pre
-              style={{
-                backgroundColor: "#f8fafc",
-                padding: "1rem",
-                borderRadius: "0.5rem",
-                fontSize: "0.75rem",
-                overflow: "auto",
-                maxHeight: "16rem",
-                border: "1px solid #e2e8f0",
-              }}
-            >
-              {JSON.stringify(result, null, 2)}
-            </pre>
-          </div>
-        )}
+      {/* HTTP Method */}
+      <div className="flex flex-col">
+        <label className="mb-1 font-medium text-gray-700">HTTP Method:</label>
+        <select
+          value={method}
+          onChange={(e) => setMethod(e.target.value)}
+          className="border border-gray-300 rounded-md p-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+          <option>GET</option>
+          <option>POST</option>
+          <option>PUT</option>
+          <option>DELETE</option>
+        </select>
+      </div>
+
+      {/* Headers */}
+      <div className="flex flex-col">
+        <label className="mb-1 font-medium text-gray-700">Headers (JSON, optional):</label>
+        <textarea
+          value={headers}
+          onChange={(e) => setHeaders(e.target.value)}
+          placeholder='{"Authorization":"Bearer ..."}'
+          className="border border-gray-300 rounded-md p-2 h-12 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+        />
+      </div>
+
+      {/* Body - Full width */}
+      <div className="md:col-span-3 flex flex-col">
+        <label className="mb-1 font-medium text-gray-700">Body (JSON, optional):</label>
+        <textarea
+          value={body}
+          onChange={(e) => setBody(e.target.value)}
+          placeholder='{"key":"value"}'
+          className="border border-gray-300 rounded-md p-2 h-20 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+        />
       </div>
     </div>
+  )}
+
+  {/* Tools Cards */}
+  <div className="grid gap-6 mt-6 sm:grid-cols-2 lg:grid-cols-3">
+    {tools.map((tool, i) => {
+      const Icon = tool.icon;
+      return (
+        <motion.div
+          key={tool.id}
+          initial={{ opacity: 0, scale: 0.9, y: 20 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          transition={{ delay: i * 0.1, type: "spring", stiffness: 100 }}
+          whileHover={{
+            scale: 1.03,
+            y: -8,
+            boxShadow: "0 20px 40px rgba(0,0,0,0.15)",
+          }}
+          whileTap={{ scale: 0.98 }}
+          onClick={() => handleToolClick(tool)}
+          className="p-4 bg-white rounded-xl shadow hover:shadow-lg cursor-pointer"
+        >
+          <div className={`w-14 h-14 rounded-xl bg-gradient-to-br ${tool.color} flex items-center justify-center mb-4`}>
+            <Icon className="h-7 w-7 text-white" />
+          </div>
+          <h3 className="text-lg font-bold text-gray-800 mb-1">{tool.name}</h3>
+          <p className="text-sm text-gray-500 leading-relaxed">{tool.description}</p>
+        </motion.div>
+      );
+    })}
+  </div>
+
+  {/* Status Messages */}
+  <div className="mt-6 space-y-4">
+    {loading && (
+      <div className="flex items-center gap-2 text-blue-600 font-medium">
+        <motion.div
+          animate={{ rotate: 360 }}
+          transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+          className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full"
+        />
+        Processing your request...
+      </div>
+    )}
+    {error && (
+      <div className="p-3 bg-red-50 border border-red-200 text-red-600 rounded-md font-medium">
+        ❌ {error}
+      </div>
+    )}
+    {result && (
+      <div>
+        <h4 className="text-green-600 font-semibold mb-2">✅ Result:</h4>
+        <pre className="bg-gray-50 p-4 rounded-md text-xs overflow-auto max-h-64 border border-gray-200">
+          {JSON.stringify(result, null, 2)}
+        </pre>
+      </div>
+    )}
+  </div>
+</div>
+
   );
 };
 
