@@ -137,7 +137,7 @@ const SecurityController = {
         });
 
       } catch (error) {
-        console.error('2FA PDF protection error:', error);
+        console.error('2FApdfworkstection error:', error);
         res.status(500).json({ error: 'Failed to protect PDF with 2FA' });
       }
     }

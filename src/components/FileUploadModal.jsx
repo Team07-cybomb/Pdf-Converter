@@ -65,7 +65,7 @@ const FileUploadModal = ({ tool, onClose }) => {
   };
 
   const handleShare = (platform) => {
-    const text = encodeURIComponent(`Check out this file I processed with PDF Pro!`);
+    const text = encodeURIComponent(`Check out this file I processed withpdfworks!`);
     const url = encodeURIComponent(window.location.href);
     let shareUrl = '';
 

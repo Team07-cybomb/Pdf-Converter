@@ -31,7 +31,7 @@
     "passport-google-oauth20": "^2.0.0",
     "pdf-image": "^2.0.0",
     "pdf-lib": "^1.17.1",
-    "pdf-parse": "^2.2.5",
+    "pdf-parse": "^1.1.1",
     "pdf-poppler": "^0.2.3",
     "pdf2pic": "^3.2.0",
     "pdfjs-dist": "^5.4.296",

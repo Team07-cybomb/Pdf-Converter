@@ -10,6 +10,7 @@ import {
   Eye,
   EyeOff,
 } from "lucide-react";
+const API_URL = import.meta.env.VITE_API_URL;
 
 const tools = [
   {
@@ -82,7 +83,7 @@ const ConvertTools = () => {
 
           try {
             const saveResponse = await fetch(
-              "http://localhost:5000/api/files/save-converted",
+              `${API_URL}/api/files/save-converted`,
               {
                 method: "POST",
                 headers: {
@@ -171,7 +172,7 @@ const ConvertTools = () => {
         selectedTool.name
       );
 
-      const response = await fetch(`http://localhost:5000${endpoint}`, {
+      const response = await fetch(`${API_URL}${endpoint}`, {
         method: "POST",
         body: formData,
         credentials: "include",
@@ -212,7 +213,7 @@ const ConvertTools = () => {
           // If the result contains a download URL, create object URL for preview
           if (result.downloadUrl) {
             const downloadResponse = await fetch(
-              `http://localhost:5000${result.downloadUrl}`
+              `${API_URL}${result.downloadUrl}`
             );
             blob = await downloadResponse.blob();
             const url = window.URL.createObjectURL(blob);

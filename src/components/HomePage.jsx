@@ -39,7 +39,7 @@ const HomePage = () => {
         >
           <div className="inline-flex items-center gap-2 bg-secondary/80 border border-primary/20 rounded-full px-4 py-1 mb-6">
             <Cpu className="h-5 w-5 text-primary" />
-            <span className="text-sm font-medium text-primary-foreground">AI-Powered Document Intelligence</span>
+            <span className="text-sm font-medium text-primary">AI-Powered Document Intelligence</span>
           </div>
           <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight">
             The Future of <span className="gradient-text">PDF Editing</span>
@@ -67,7 +67,9 @@ const HomePage = () => {
           className="mt-16 max-w-5xl mx-auto"
         >
           <div className="glass-effect rounded-2xl p-2">
-            <img class="rounded-xl shadow-2xl shadow-black/20" alt="Screenshot of the PDF Pro application dashboard showing various tools and a clean user interface" src="https://images.unsplash.com/photo-1702479744181-2d6b58941583" />
+            <img class="rounded-xl shadow-2xl shadow-black/20"
+             alt="Screenshot of thepdfworks application dashboard showing various tools and a clean user interface"
+              src="/pdf-works.jpg" />
           </div>
         </motion.div>
       </section>
@@ -137,7 +139,7 @@ const HomePage = () => {
         <div className="max-w-3xl mx-auto">
           <h2 className="text-4xl font-bold gradient-text">Ready to Supercharge Your PDFs?</h2>
           <p className="mt-4 text-xl text-muted-foreground">
-            Join thousands of users who trust PDF Pro for their document needs. Sign up for free and experience the difference.
+            Join thousands of users who trustpdfworks for their document needs. Sign up for free and experience the difference.
           </p>
           <div className="mt-8">
             <Link to="/tools">

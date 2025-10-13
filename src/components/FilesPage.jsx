@@ -9,6 +9,7 @@ import {
   File,
   Eye,
 } from "lucide-react";
+const API_URL = import.meta.env.VITE_API_URL;
 
 const FilesPage = () => {
   const [files, setFiles] = useState([]);
@@ -19,7 +20,7 @@ const FilesPage = () => {
   const fetchFiles = async () => {
     try {
       setError("");
-      const res = await fetch("http://localhost:5000/api/files", {
+      const res = await fetch(`${API_URL}/api/files`, {
         credentials: "include",
       });
 
@@ -45,7 +46,7 @@ const FilesPage = () => {
     if (!window.confirm("Are you sure you want to delete this file?")) return;
 
     try {
-      const res = await fetch(`http://localhost:5000/api/files/${id}`, {
+      const res = await fetch(`${API_URL}/api/files/${id}`, {
         method: "DELETE",
         credentials: "include",
       });
@@ -84,7 +85,7 @@ const FilesPage = () => {
   );
 
   const handlePreview = (file) => {
-    window.open(`http://localhost:5000/${file.path}`, "_blank");
+    window.open(`${API_URL}/${file.path}`, "_blank");
   };
 
   if (loading) {
@@ -199,7 +200,7 @@ const FilesPage = () => {
                     <Eye className="h-4 w-4" />
                   </button>
                   <a
-                    href={`http://localhost:5000/${file.path}`}
+                    href={`${API_URL}/${file.path}`}
                     download={file.filename}
                     className="p-2 text-muted-foreground hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
                     title="Download"

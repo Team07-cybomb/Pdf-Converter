@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/use-toast";
+const API_URL = import.meta.env.VITE_API_URL;
 
 const AdminLoginPage = () => {
   const [formData, setFormData] = useState({ email: "", password: "" });
@@ -13,9 +14,9 @@ const AdminLoginPage = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsLoading(true);
-    
+
     try {
-      const res = await fetch("http://localhost:5000/api/admin/login", {
+      const res = await fetch(`${API_URL}/api/admin/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(formData),
@@ -29,11 +30,19 @@ const AdminLoginPage = () => {
         toast({ title: "Admin logged in!", description: data.message });
         navigate("/admin/dashboard");
       } else {
-        toast({ title: "Error", description: data.error, variant: "destructive" });
+        toast({
+          title: "Error",
+          description: data.error,
+          variant: "destructive",
+        });
       }
     } catch (err) {
       console.error(err);
-      toast({ title: "Error", description: "Server error", variant: "destructive" });
+      toast({
+        title: "Error",
+        description: "Server error",
+        variant: "destructive",
+      });
     } finally {
       setIsLoading(false);
     }
@@ -67,10 +76,10 @@ const AdminLoginPage = () => {
       background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
       WebkitBackgroundClip: "text",
       WebkitTextFillColor: "transparent",
-      backgroundClip: "text"
+      backgroundClip: "text",
     },
     formGroup: {
-      marginBottom: "25px"
+      marginBottom: "25px",
     },
     label: {
       display: "block",
@@ -79,7 +88,7 @@ const AdminLoginPage = () => {
       color: "#374151",
       fontSize: "14px",
       textTransform: "uppercase",
-      letterSpacing: "0.5px"
+      letterSpacing: "0.5px",
     },
     input: {
       width: "100%",
@@ -90,7 +99,7 @@ const AdminLoginPage = () => {
       transition: "all 0.3s ease",
       outline: "none",
       background: "white",
-      boxSizing: "border-box"
+      boxSizing: "border-box",
     },
     inputFocus: {
       borderColor: "#667eea",
@@ -109,15 +118,15 @@ const AdminLoginPage = () => {
       transition: "all 0.3s ease",
       position: "relative",
       overflow: "hidden",
-      boxShadow: "0 8px 25px rgba(102, 126, 234, 0.3)"
+      boxShadow: "0 8px 25px rgba(102, 126, 234, 0.3)",
     },
     buttonHover: {
       transform: "translateY(-3px)",
-      boxShadow: "0 15px 35px rgba(102, 126, 234, 0.4)"
+      boxShadow: "0 15px 35px rgba(102, 126, 234, 0.4)",
     },
     buttonLoading: {
       opacity: "0.8",
-      cursor: "not-allowed"
+      cursor: "not-allowed",
     },
     loadingSpinner: {
       display: "inline-block",
@@ -127,14 +136,14 @@ const AdminLoginPage = () => {
       borderTop: "3px solid white",
       borderRadius: "50%",
       animation: "spin 1s linear infinite",
-      marginRight: "10px"
+      marginRight: "10px",
     },
     footerText: {
       textAlign: "center",
       marginTop: "20px",
       color: "#6b7280",
-      fontSize: "14px"
-    }
+      fontSize: "14px",
+    },
   };
 
   return (
@@ -152,16 +161,20 @@ const AdminLoginPage = () => {
       <div style={styles.container}>
         <div style={styles.formContainer}>
           <h1 style={styles.title}>Admin Login</h1>
-          
+
           <form onSubmit={handleSubmit}>
             <div style={styles.formGroup}>
-              <Label htmlFor="email" style={styles.label}>Email Address</Label>
+              <Label htmlFor="email" style={styles.label}>
+                Email Address
+              </Label>
               <Input
                 id="email"
                 type="email"
                 placeholder="admin@example.com"
                 value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                onChange={(e) =>
+                  setFormData({ ...formData, email: e.target.value })
+                }
                 required
                 style={styles.input}
                 onFocus={(e) => {
@@ -176,13 +189,17 @@ const AdminLoginPage = () => {
             </div>
 
             <div style={styles.formGroup}>
-              <Label htmlFor="password" style={styles.label}>Password</Label>
+              <Label htmlFor="password" style={styles.label}>
+                Password
+              </Label>
               <Input
                 id="password"
                 type="password"
                 placeholder="••••••••"
                 value={formData.password}
-                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                onChange={(e) =>
+                  setFormData({ ...formData, password: e.target.value })
+                }
                 required
                 style={styles.input}
                 onFocus={(e) => {
@@ -196,17 +213,19 @@ const AdminLoginPage = () => {
               />
             </div>
 
-            <Button 
-              type="submit" 
+            <Button
+              type="submit"
               disabled={isLoading}
               style={{
                 ...styles.button,
-                ...(isLoading && styles.buttonLoading)
+                ...(isLoading && styles.buttonLoading),
               }}
               onMouseEnter={(e) => {
                 if (!isLoading) {
-                  e.currentTarget.style.transform = styles.buttonHover.transform;
-                  e.currentTarget.style.boxShadow = styles.buttonHover.boxShadow;
+                  e.currentTarget.style.transform =
+                    styles.buttonHover.transform;
+                  e.currentTarget.style.boxShadow =
+                    styles.buttonHover.boxShadow;
                 }
               }}
               onMouseLeave={(e) => {
@@ -224,10 +243,8 @@ const AdminLoginPage = () => {
               )}
             </Button>
           </form>
-          
-          <div style={styles.footerText}>
-            Secure Admin Access
-          </div>
+
+          <div style={styles.footerText}>Secure Admin Access</div>
         </div>
       </div>
     </>
