@@ -82,7 +82,7 @@ app.use("/api/organize", OrganizeRoutes);
 app.use("/api/security", SecurityRoutes);
 app.use("/api/files", fileRoutes);
 app.use("/api/advanced", AdvancedRoutes);
-app.use('/api/tools/pdf-editor', EditRoutes);
+app.use("/api/tools/pdf-editor", EditRoutes);
 
 app.use("/api/advanced", AdvancedRoutes);
 

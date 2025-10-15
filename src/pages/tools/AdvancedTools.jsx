@@ -138,6 +138,7 @@ const AdvancedTools = () => {
   };
 
   return (
+    <div className="flex justify-center">
   <div className="p-6">
   <h2 className="text-2xl font-bold mb-6 flex items-center gap-2">⚙️ Advanced Tools</h2>
 
@@ -250,7 +251,7 @@ const AdvancedTools = () => {
     )}
   </div>
 </div>
-
+</div>
   );
 };
 

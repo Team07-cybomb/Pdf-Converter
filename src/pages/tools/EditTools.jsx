@@ -55,7 +55,8 @@ const EditTools = () => {
   const ActiveComponent = activeTool ? activeTool.component : null;
 
   return (
-    <>
+    <div className="flex justify-center">
+    
       {/* --- Tool Grid --- */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
         {tools.map((tool, i) => {
@@ -118,7 +119,7 @@ const EditTools = () => {
           </motion.div>
         )}
       </AnimatePresence>
-    </>
+    </div>
   );
 };
 

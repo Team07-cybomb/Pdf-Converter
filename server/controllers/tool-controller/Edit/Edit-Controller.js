@@ -1,423 +1,818 @@
 // controllers/tool-controller/Edit/Edit-Controller.js
-const path = require("path");
-const fs = require("fs").promises;
-const { spawn } = require("child_process");
-const { PDFDocument, rgb, StandardFonts } = require("pdf-lib");
-const pdfParse = require("pdf-parse");
+const path = require('path');
+const fs = require('fs').promises;
+const { PDFDocument, rgb, StandardFonts } = require('pdf-lib');
+const pdfjsLib = require('pdfjs-dist/legacy/build/pdf');
+const { createCanvas } = require('canvas');
 
-// ================================
-// MAIN CONTROLLER CLASS
-// ================================
+// Configure PDF.js
+pdfjsLib.GlobalWorkerOptions.workerSrc = path.join(__dirname, '../../../node_modules/pdfjs-dist/build/pdf.worker.js');
+
 class EditController {
-  // Utility: Create a new session
-  async createSession(fileBuffer, originalFileName) {
-    const sessionId = `edit_${Date.now()}_${Math.random()
-      .toString(36)
-      .substr(2, 9)}`;
-    const sessionDir = path.join(__dirname, "../../../uploads/sessions", sessionId);
-    await fs.mkdir(sessionDir, { recursive: true });
-
-    const originalFilePath = path.join(sessionDir, "original.pdf");
-    await fs.writeFile(originalFilePath, fileBuffer);
-
-    const pdfDoc = await PDFDocument.load(fileBuffer);
-    const totalPages = pdfDoc.getPageCount();
-
-    return { sessionId, originalFilePath, totalPages };
+  constructor() {
+    console.log('EditController initialized');
+    this.uploadPDF = this.uploadPDF.bind(this);
+    this.extractPDFStructure = this.extractPDFStructure.bind(this);
+    this.getStructure = this.getStructure.bind(this);
+    this.updateText = this.updateText.bind(this);
+    this.exportPDF = this.exportPDF.bind(this);
+    this.serveImage = this.serveImage.bind(this);
+    this.applyEdits = this.applyEdits.bind(this);
+    this.downloadEdited = this.downloadEdited.bind(this);
+    this.renderPageToImage = this.renderPageToImage.bind(this);
+    this.serveBackgroundImage = this.serveBackgroundImage.bind(this);
+    this.getEdits = this.getEdits.bind(this); // Add this line
   }
 
-  // ============================
-  // Upload PDF
-  // ============================
+  // Upload PDF and extract structure
   async uploadPDF(req, res) {
-    try {
-      if (!req.file || req.file.mimetype !== "application/pdf") {
-        return res
-          .status(400)
-          .json({ success: false, error: "Only PDF files are allowed" });
-      }
-
-      const { sessionId, totalPages } = await this.createSession(
-        req.file.buffer,
-        req.file.originalname
-      );
-
-      res.json({
-        success: true,
-        sessionId,
-        totalPages,
-        message: "PDF uploaded successfully",
-      });
-    } catch (error) {
-      console.error("Upload error:", error);
-      res.status(500).json({ success: false, error: error.message });
-    }
-  }
-
-  // ============================
-  // Convert (DOCX, PPTX, etc.) → PDF
-  // ============================
-  async convertAndUpload(req, res) {
+    console.log('uploadPDF method called');
     try {
       if (!req.file) {
-        return res
-          .status(400)
-          .json({ success: false, error: "No file uploaded" });
+        return res.status(400).json({
+          success: false,
+          error: 'No file uploaded'
+        });
       }
 
-      const tempDir = path.join(__dirname, "../../../uploads/temp");
-      await fs.mkdir(tempDir, { recursive: true });
-      const tempFilePath = path.join(tempDir, req.file.originalname);
-      await fs.writeFile(tempFilePath, req.file.buffer);
+      if (req.file.mimetype !== 'application/pdf') {
+        return res.status(400).json({
+          success: false,
+          error: 'Only PDF files are allowed'
+        });
+      }
 
-      const libreOffice = new LibreOfficeService();
-      const convertedFilePath = await libreOffice.convertToPDF(
-        tempFilePath,
-        tempDir
-      );
+      console.log('PDF file received, size:', req.file.size);
 
-      const convertedPdfBuffer = await fs.readFile(convertedFilePath);
-      await fs.unlink(tempFilePath);
-      await fs.unlink(convertedFilePath);
+      const sessionId = `edit_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      const sessionDir = path.join(__dirname, '../../../uploads/sessions', sessionId);
+      
+      await fs.mkdir(sessionDir, { recursive: true });
+      console.log('Session directory created:', sessionDir);
 
-      const { sessionId, totalPages } = await this.createSession(
-        convertedPdfBuffer,
-        req.file.originalname
-      );
+      const originalFilePath = path.join(sessionDir, 'original.pdf');
+      await fs.writeFile(originalFilePath, req.file.buffer);
+
+      // Extract PDF structure and render pages to images
+      console.log('Starting PDF processing...');
+      const pdfUint8Array = new Uint8Array(req.file.buffer);
+      const pdfStructure = await this.extractPDFStructure(pdfUint8Array, sessionId);
+      
+      // Render each page to image for background
+      for (let pageNum = 1; pageNum <= pdfStructure.pages.length; pageNum++) {
+        await this.renderPageToImage(pdfUint8Array, pageNum, sessionId);
+      }
+
+      console.log('PDF processing completed');
 
       res.json({
         success: true,
         sessionId,
-        totalPages,
-        message: "File converted and uploaded successfully",
+        totalPages: pdfStructure.pages.length,
+        structure: pdfStructure,
+        message: 'PDF uploaded and processed successfully'
       });
+
     } catch (error) {
-      console.error("Conversion and upload error:", error);
-      res.status(500).json({ success: false, error: error.message });
+      console.error('Upload error:', error);
+      res.status(500).json({
+        success: false,
+        error: error.message,
+        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      });
     }
   }
 
-  // ============================
-  // Extract Text from PDF
-  // ============================
-  async extractText(req, res) {
+  // Extract PDF structure with precise coordinates
+  async extractPDFStructure(pdfBuffer, sessionId) {
+    console.log('extractPDFStructure called');
+    
+    const structure = {
+      pages: [],
+      metadata: {},
+      fonts: {},
+      images: {}
+    };
+
     try {
-      const { sessionId } = req.body;
-      if (!sessionId) {
-        return res
-          .status(400)
-          .json({ success: false, error: "Session ID missing" });
+      const pdfDoc = await pdfjsLib.getDocument({ data: pdfBuffer }).promise;
+      console.log('PDF loaded, pages:', pdfDoc.numPages);
+
+      const metadata = await pdfDoc.getMetadata();
+      structure.metadata = metadata.info || {};
+
+      for (let pageNum = 1; pageNum <= pdfDoc.numPages; pageNum++) {
+        console.log(`Processing page ${pageNum}...`);
+        
+        const page = await pdfDoc.getPage(pageNum);
+        const viewport = page.getViewport({ scale: 1.0 });
+        
+        const [textContent, annotations] = await Promise.all([
+          page.getTextContent(),
+          page.getAnnotations().catch(() => [])
+        ]);
+
+        const pageStructure = {
+          pageNumber: pageNum,
+          width: viewport.width,
+          height: viewport.height,
+          viewport: {
+            width: viewport.width,
+            height: viewport.height,
+            scale: viewport.scale
+          },
+          backgroundImage: `/api/tools/pdf-editor/background/${sessionId}/page-${pageNum}.png`,
+          elements: {
+            text: [],
+            images: [],
+            annotations: []
+          }
+        };
+
+        // Extract text elements with precise positioning
+        const textElements = this.extractTextElements(textContent, viewport, pageNum);
+        pageStructure.elements.text = textElements;
+
+        // Extract annotations
+        const annotationElements = this.extractAnnotations(annotations, viewport, pageNum);
+        pageStructure.elements.annotations = annotationElements;
+
+        structure.pages.push(pageStructure);
+
+        console.log(`Page ${pageNum} processed:`, {
+          text: textElements.length,
+          annotations: annotationElements.length
+        });
       }
 
-      const sessionDir = path.join(__dirname, "../../../uploads/sessions", sessionId);
-      const pdfPath = path.join(sessionDir, "original.pdf");
+      await pdfDoc.destroy();
+      return structure;
 
-      const fileBuffer = await fs.readFile(pdfPath);
-      const data = await pdfParse(fileBuffer);
-
-      res.json({ success: true, text: data.text.split("\n") });
     } catch (error) {
-      console.error("Text extraction error:", error);
-      res.status(500).json({ success: false, error: error.message });
+      console.error('Error extracting PDF structure:', error);
+      throw error;
     }
   }
 
-  // ============================
-  // Extract Form Fields
-  // ============================
-  async extractFormFields(req, res) {
-    try {
-      const { sessionId } = req.params;
-      if (!sessionId) {
-        return res
-          .status(400)
-          .json({ success: false, error: "Session ID missing" });
-      }
+  // Extract text elements with exact positioning - FIXED COORDINATES
+  extractTextElements(textContent, viewport, pageNum) {
+    const textElements = [];
 
-      const pdfPath = path.join(
-        __dirname,
-        "../../../uploads/sessions",
-        sessionId,
-        "original.pdf"
+    textContent.items.forEach((item, index) => {
+      const transform = item.transform;
+      
+      // FIXED: Calculate precise position using PDF coordinate system
+      // PDF has origin at bottom-left, DOM has origin at top-left
+      const x = transform[4];
+      const y = viewport.height - transform[5] - (item.height || 12);
+      
+      const textElement = {
+        id: `text-${pageNum}-${index}`,
+        type: 'text',
+        content: item.str,
+        originalContent: item.str,
+        page: pageNum,
+        position: {
+          x: x,
+          y: y,
+          width: item.width || 100,
+          height: item.height || 12
+        },
+        style: {
+          fontSize: item.height || 12,
+          fontFamily: item.fontName || 'Arial, sans-serif',
+          fontWeight: this.getFontWeight(item),
+          color: this.getTextColor(item),
+          textAlign: 'left',
+          lineHeight: 1,
+          whiteSpace: 'pre'
+        },
+        transform: item.transform
+      };
+
+      textElements.push(textElement);
+    });
+
+    return textElements;
+  }
+
+  // Get font weight from font name
+  getFontWeight(item) {
+    if (!item.fontName) return 'normal';
+    const fontName = item.fontName.toLowerCase();
+    if (fontName.includes('bold') || fontName.includes('black')) return 'bold';
+    if (fontName.includes('light') || fontName.includes('thin')) return 'lighter';
+    return 'normal';
+  }
+
+  // Extract text color
+  getTextColor(item) {
+    if (item.color && item.color !== 'rgba(0, 0, 0, 1)') {
+      return this.rgbToHex(item.color);
+    }
+    return '#000000';
+  }
+
+  // Convert RGB to Hex
+  rgbToHex(rgb) {
+    if (Array.isArray(rgb)) {
+      const [r, g, b] = rgb.map(c => Math.round(c * 255));
+      return `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`;
+    }
+    return '#000000';
+  }
+
+  // Extract annotations
+  extractAnnotations(annotations, viewport, pageNum) {
+    return annotations.map((annotation, index) => ({
+      id: `annotation-${pageNum}-${index}`,
+      type: 'annotation',
+      content: annotation.contents || '',
+      page: pageNum,
+      position: {
+        x: annotation.rect[0],
+        y: viewport.height - annotation.rect[3],
+        width: annotation.rect[2] - annotation.rect[0],
+        height: annotation.rect[3] - annotation.rect[1]
+      },
+      annotationType: annotation.subtype
+    }));
+  }
+
+  // Render page to image for background
+  async renderPageToImage(pdfBuffer, pageNum, sessionId) {
+    try {
+      const pdfDoc = await pdfjsLib.getDocument({ data: pdfBuffer }).promise;
+      const page = await pdfDoc.getPage(pageNum);
+      const viewport = page.getViewport({ scale: 2.0 }); // Higher scale for better quality
+      
+      const canvas = createCanvas(viewport.width, viewport.height);
+      const context = canvas.getContext('2d');
+      
+      const renderContext = {
+        canvasContext: context,
+        viewport: viewport
+      };
+      
+      await page.render(renderContext).promise;
+      
+      // Save the image
+      const sessionDir = path.join(__dirname, '../../../uploads/sessions', sessionId);
+      const imagePath = path.join(sessionDir, `page-${pageNum}.png`);
+      
+      const buffer = canvas.toBuffer('image/png');
+      await fs.writeFile(imagePath, buffer);
+      
+      await page.cleanup();
+      await pdfDoc.destroy();
+      
+      console.log(`Rendered page ${pageNum} to image`);
+      
+    } catch (error) {
+      console.error(`Error rendering page ${pageNum} to image:`, error);
+    }
+  }
+
+  // Serve background images
+  async serveBackgroundImage(req, res) {
+    try {
+      const { sessionId, pageNum } = req.params;
+      
+      const imagePath = path.join(
+        __dirname, 
+        '../../../uploads/sessions', 
+        sessionId, 
+        `page-${pageNum}.png`
       );
-
-      const fileBuffer = await fs.readFile(pdfPath);
-      const pdfDoc = await PDFDocument.load(fileBuffer);
-      const formFields = new PDFService().extractFormFields(pdfDoc);
-
-      res.json({ success: true, formFields });
-    } catch (error) {
-      console.error("Form extraction error:", error);
-      res.status(500).json({ success: false, error: error.message });
-    }
-  }
-
-  // ============================
-  // Apply Edits to PDF
-  // ============================
-  async applyEdits(req, res) {
-    try {
-      const { sessionId, edits, formFields } = req.body;
-      if (!sessionId) {
-        return res
-          .status(400)
-          .json({ success: false, error: "Session ID missing" });
+      
+      // Check if image exists
+      try {
+        await fs.access(imagePath);
+      } catch {
+        return res.status(404).json({ error: 'Background image not found' });
       }
-
-      const sessionDir = path.join(__dirname, "../../../uploads/sessions", sessionId);
-      const inputPdfPath = path.join(sessionDir, "original.pdf");
-      const outputPdfPath = path.join(sessionDir, "edited.pdf");
-
-      const existingPdfBytes = await fs.readFile(inputPdfPath);
-      const pdfDoc = await PDFDocument.load(existingPdfBytes);
-      const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-
-      const pdfService = new PDFService();
-
-      // Apply text, image, shape edits
-      await pdfService.applyEdits(pdfDoc, edits, font);
-
-      // Apply form field changes (with TT warning fix)
-      pdfService.applyFormEdits(pdfDoc, formFields, font);
-
-      const pdfBytes = await pdfDoc.save();
-      await fs.writeFile(outputPdfPath, pdfBytes);
-
-      res.json({
-        success: true,
-        message: "PDF edits applied successfully",
-        filePath: outputPdfPath,
-      });
+      
+      const imageBuffer = await fs.readFile(imagePath);
+      
+      res.setHeader('Content-Type', 'image/png');
+      res.setHeader('Cache-Control', 'public, max-age=3600');
+      res.send(imageBuffer);
+      
     } catch (error) {
-      console.error("Apply edits error:", error);
-      res.status(500).json({ success: false, error: error.message });
+      console.error('Serve background image error:', error);
+      res.status(500).send('Error serving background image');
     }
   }
 
-  // ============================
-  // Download Edited PDF
-  // ============================
-  async downloadEdited(req, res) {
+  // Get PDF structure for specific session
+  async getStructure(req, res) {
     try {
       const { sessionId } = req.params;
+      
       if (!sessionId) {
-        return res.status(400).send("Session ID missing");
+        return res.status(400).json({
+          success: false,
+          error: 'Session ID missing'
+        });
       }
 
       const filePath = path.join(
         __dirname,
-        "../../../uploads/sessions",
+        '../../../uploads/sessions',
         sessionId,
-        "edited.pdf"
+        'original.pdf'
       );
 
-      const exists = await fs
-        .access(filePath)
-        .then(() => true)
-        .catch(() => false);
+      const fileBuffer = await fs.readFile(filePath);
+      const pdfUint8Array = new Uint8Array(fileBuffer);
+      const structure = await this.extractPDFStructure(pdfUint8Array, sessionId);
 
-      if (!exists) {
-        return res.status(404).send("Edited PDF not found");
-      }
+      res.json({
+        success: true,
+        structure
+      });
 
-      res.setHeader("Content-Type", "application/pdf");
-      res.setHeader("Content-Disposition", "attachment; filename=edited.pdf");
-      res.sendFile(filePath);
     } catch (error) {
-      console.error("Download error:", error);
-      res.status(500).send(error.message);
+      console.error('Get structure error:', error);
+      res.status(500).json({
+        success: false,
+        error: error.message
+      });
     }
   }
-}
 
-// ================================
-// SUPPORT SERVICES
-// ================================
-class LibreOfficeService {
-  convertToPDF(inputPath, outputDir) {
-    return new Promise((resolve, reject) => {
-      const outputFilePath = path.join(
-        outputDir,
-        `${path.basename(inputPath, path.extname(inputPath))}.pdf`
-      );
-      const command = "soffice";
-      const args = [
-        "--headless",
-        "--convert-to",
-        "pdf",
-        "--outdir",
-        outputDir,
-        inputPath,
-      ];
-      const child = spawn(command, args);
+  // Update text content
+  async updateText(req, res) {
+    try {
+      const { sessionId, elementId, newContent } = req.body;
+      
+      if (!sessionId || !elementId) {
+        return res.status(400).json({
+          success: false,
+          error: 'Session ID and element ID are required'
+        });
+      }
 
-      child.on("error", (err) => {
-        console.error("Failed to start LibreOffice process.", err);
-        reject(
-          new Error(
-            "Failed to convert file. Is LibreOffice installed and in your PATH?"
-          )
-        );
+      // Save edits to session file
+      const sessionDir = path.join(__dirname, '../../../uploads/sessions', sessionId);
+      const editsFile = path.join(sessionDir, 'edits.json');
+      
+      let edits = { text: {}, elements: {} };
+      try {
+        const editsData = await fs.readFile(editsFile, 'utf8');
+        edits = JSON.parse(editsData);
+      } catch (error) {
+        // File doesn't exist yet
+      }
+      
+      edits.text[elementId] = newContent;
+      await fs.writeFile(editsFile, JSON.stringify(edits, null, 2));
+
+      res.json({
+        success: true,
+        message: 'Text updated successfully'
       });
 
-      child.on("close", (code) => {
-        if (code === 0) {
-          resolve(outputFilePath);
-        } else {
-          reject(new Error(`LibreOffice conversion failed with exit code ${code}`));
+    } catch (error) {
+      console.error('Update text error:', error);
+      res.status(500).json({
+        success: false,
+        error: error.message
+      });
+    }
+  }
+
+  // Get saved edits
+  async getEdits(req, res) {
+    try {
+      const { sessionId } = req.body;
+      
+      if (!sessionId) {
+        return res.status(400).json({
+          success: false,
+          error: 'Session ID missing'
+        });
+      }
+
+      const sessionDir = path.join(__dirname, '../../../uploads/sessions', sessionId);
+      const editsFile = path.join(sessionDir, 'edits.json');
+      
+      let edits = { text: {}, elements: {} };
+      try {
+        const editsData = await fs.readFile(editsFile, 'utf8');
+        edits = JSON.parse(editsData);
+      } catch (error) {
+        // File doesn't exist yet, return empty edits
+      }
+
+      res.json({
+        success: true,
+        edits
+      });
+
+    } catch (error) {
+      console.error('Get edits error:', error);
+      res.status(500).json({
+        success: false,
+        error: error.message
+      });
+    }
+  }
+
+  // Export to PDF with edits
+async exportPDF(req, res) {
+  try {
+    const { sessionId, edits } = req.body;
+    
+    if (!sessionId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Session ID missing'
+      });
+    }
+
+    const sessionDir = path.join(__dirname, '../../../uploads/sessions', sessionId);
+    const originalFilePath = path.join(sessionDir, 'original.pdf');
+    const exportFilePath = path.join(sessionDir, 'exported.pdf');
+
+    // Read original PDF
+    const originalPdfBytes = await fs.readFile(originalFilePath);
+    const pdfDoc = await PDFDocument.load(originalPdfBytes);
+    
+    // Embed fonts
+    const helveticaFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const helveticaBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+    
+    const pages = pdfDoc.getPages();
+
+    // Apply text edits to existing PDF text elements
+    if (edits && edits.text && typeof edits.text === 'object') {
+      console.log('Applying text edits:', Object.keys(edits.text).length);
+      
+      for (const [elementId, newContent] of Object.entries(edits.text)) {
+        // Skip undefined or null content
+        if (newContent === undefined || newContent === null) {
+          console.log(`Skipping undefined content for element: ${elementId}`);
+          continue;
         }
-      });
+
+        // Ensure content is a string
+        const contentString = String(newContent);
+        
+        if (elementId.startsWith('text-') && contentString.trim()) {
+          const parts = elementId.split('-');
+          if (parts.length < 3) {
+            console.log(`Invalid element ID format: ${elementId}`);
+            continue;
+          }
+          
+          const pageNum = parseInt(parts[1]);
+          const elementIndex = parseInt(parts[2]);
+          
+          if (isNaN(pageNum) || isNaN(elementIndex)) {
+            console.log(`Invalid page number or element index: ${elementId}`);
+            continue;
+          }
+          
+          const pageIndex = pageNum - 1;
+          
+          if (pages[pageIndex]) {
+            const page = pages[pageIndex];
+            const { width, height } = page.getSize();
+            
+            // Get the original text element position from structure
+            const structureFile = path.join(sessionDir, 'structure.json');
+            let structure = null;
+            try {
+              const structureData = await fs.readFile(structureFile, 'utf8');
+              structure = JSON.parse(structureData);
+            } catch (error) {
+              console.log('No structure file found, using default positions');
+            }
+            
+            let x = 50;
+            let y = height - 100;
+            
+            // If we have structure data, use the exact coordinates
+            if (structure && structure.pages && structure.pages[pageIndex]) {
+              const pageStructure = structure.pages[pageIndex];
+              if (pageStructure.elements && pageStructure.elements.text && 
+                  pageStructure.elements.text[elementIndex]) {
+                const textElement = pageStructure.elements.text[elementIndex];
+                x = textElement.position.x;
+                y = height - textElement.position.y - textElement.position.height;
+                
+                console.log(`Drawing text at: x=${x}, y=${y}, content: "${contentString.substring(0, 20)}..."`);
+              }
+            }
+            
+            try {
+              // Draw the edited text
+              page.drawText(contentString, {
+                x: x,
+                y: y,
+                size: 12,
+                font: helveticaFont,
+                color: rgb(0, 0, 0),
+              });
+            } catch (drawError) {
+              console.error(`Error drawing text for element ${elementId}:`, drawError);
+            }
+          }
+        }
+      }
+    }
+
+    // Apply user elements (shapes, images, signatures, drawings)
+    if (edits && edits.elements && typeof edits.elements === 'object') {
+      console.log('Applying user elements');
+      
+      for (const [pageNum, pageElements] of Object.entries(edits.elements)) {
+        const pageIndex = parseInt(pageNum) - 1;
+        
+        if (isNaN(pageIndex) || pageIndex < 0 || pageIndex >= pages.length) {
+          console.log(`Invalid page index: ${pageIndex} for pageNum: ${pageNum}`);
+          continue;
+        }
+        
+        if (pages[pageIndex] && Array.isArray(pageElements)) {
+          const page = pages[pageIndex];
+          const { width, height } = page.getSize();
+          
+          pageElements.forEach((element, index) => {
+            try {
+              // Validate element has required properties
+              if (!element || typeof element !== 'object') {
+                console.log(`Invalid element at index ${index} on page ${pageNum}`);
+                return;
+              }
+              
+              switch (element.type) {
+                case 'text':
+                  // User-added text boxes
+                  const textContent = element.text || 'Text';
+                  if (textContent && typeof textContent === 'string') {
+                    page.drawText(textContent, {
+                      x: element.x || 0,
+                      y: height - (element.y || 0) - (element.height || 20),
+                      size: element.fontSize || 16,
+                      font: helveticaFont,
+                      color: rgb(0, 0, 0),
+                    });
+                  }
+                  break;
+                  
+                case 'signature':
+                  // Handle signature images
+                  if (element.src && element.src.startsWith('data:image')) {
+                    this.embedImageInPDF(page, element.src, element.x || 0, 
+                      height - (element.y || 0) - (element.height || 50), 
+                      element.width || 100, element.height || 50);
+                  } else {
+                    // Text signature
+                    const signatureText = element.text || element.content || 'Signature';
+                    if (signatureText && typeof signatureText === 'string') {
+                      page.drawText(signatureText, {
+                        x: element.x || 0,
+                        y: height - (element.y || 0) - (element.height || 20),
+                        size: element.fontSize || 16,
+                        font: helveticaFont,
+                        color: rgb(0, 0, 0),
+                      });
+                    }
+                  }
+                  break;
+                  
+                case 'rectangle':
+                  if (element.width && element.height) {
+                    page.drawRectangle({
+                      x: element.x || 0,
+                      y: height - (element.y || 0) - (element.height || 0),
+                      width: element.width,
+                      height: element.height,
+                      borderColor: rgb(0, 0, 0),
+                      borderWidth: 2,
+                    });
+                  }
+                  break;
+                  
+                case 'circle':
+                  if (element.width && element.height) {
+                    page.drawEllipse({
+                      x: (element.x || 0) + element.width / 2,
+                      y: height - (element.y || 0) - element.height / 2,
+                      xScale: element.width / 2,
+                      yScale: element.height / 2,
+                      borderColor: rgb(0, 0, 0),
+                      borderWidth: 2,
+                    });
+                  }
+                  break;
+                  
+                case 'line':
+                  if (element.width) {
+                    page.drawLine({
+                      start: { x: element.x || 0, y: height - (element.y || 0) },
+                      end: { x: (element.x || 0) + element.width, y: height - (element.y || 0) },
+                      color: rgb(0, 0, 0),
+                      thickness: 2,
+                    });
+                  }
+                  break;
+                  
+                case 'image':
+                case 'drawing':
+                  // Embed images
+                  if (element.src && element.src.startsWith('data:image')) {
+                    this.embedImageInPDF(page, element.src, element.x || 0, 
+                      height - (element.y || 0) - (element.height || 0), 
+                      element.width || 100, element.height || 100);
+                  }
+                  break;
+                  
+                default:
+                  console.log(`Unknown element type: ${element.type}`);
+              }
+            } catch (elementError) {
+              console.error(`Error drawing element ${element?.type} at index ${index}:`, elementError);
+            }
+          });
+        }
+      }
+    }
+
+    // Handle drawings from canvas
+    if (edits.drawings && edits.drawings.dataURL) {
+      const drawingPageIndex = (edits.drawings.page || 1) - 1;
+      if (pages[drawingPageIndex]) {
+        const page = pages[drawingPageIndex];
+        await this.embedImageInPDF(
+          page, 
+          edits.drawings.dataURL, 
+          0, 
+          0, 
+          edits.drawings.width || 800, 
+          edits.drawings.height || 600
+        );
+      }
+    }
+
+    const pdfBytes = await pdfDoc.save();
+    
+    // Save exported file
+    await fs.writeFile(exportFilePath, pdfBytes);
+
+    console.log('PDF exported successfully');
+    
+    // Send PDF as response
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'attachment; filename=edited-document.pdf');
+    res.send(Buffer.from(pdfBytes));
+
+  } catch (error) {
+    console.error('Export PDF error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
     });
   }
 }
 
-class PDFService {
-  extractFormFields(pdfDoc) {
-    const formFields = [];
-    try {
-      const form = pdfDoc.getForm();
-      const fields = form.getFields();
-      fields.forEach((field, index) => {
-        formFields.push({
-          id: `field_${index}`,
-          name: field.getName() || `Field ${index + 1}`,
-          type: field.constructor.name,
-          value: field.getText ? field.getText() : "",
-        });
-      });
-    } catch (formError) {
-      console.log("No form fields found:", formError.message);
+// Enhanced embedImageInPDF method with better error handling
+async embedImageInPDF(page, dataURL, x, y, width, height) {
+  try {
+    // Validate parameters
+    if (!dataURL || !dataURL.startsWith('data:image')) {
+      console.warn('Invalid dataURL provided for image embedding');
+      return;
     }
-    return formFields;
-  }
 
-  async applyEdits(pdfDoc, edits, font) {
-    const pages = pdfDoc.getPages();
-    if (!Array.isArray(edits)) return;
+    // Extract base64 data from dataURL
+    const base64Data = dataURL.split(',')[1];
+    if (!base64Data) {
+      console.warn('No base64 data found in dataURL');
+      return;
+    }
 
-    for (const edit of edits) {
-      if (edit.page && edit.page <= pages.length) {
-        const page = pages[edit.page - 1];
-        const pageHeight = page.getHeight();
-
-        switch (edit.type) {
-          case "add-text":
-            page.drawText(edit.content || "", {
-              x: edit.x || 50,
-              y: pageHeight - (edit.y || 100),
-              size: edit.fontSize || 12,
-              font: font,
-              color: this.hexToRgb(edit.color),
-            });
-            break;
-
-          case "image":
-          case "signature":
-            if (edit.imageData) {
-              try {
-                const imageBytes = Buffer.from(edit.imageData.split(",")[1], "base64");
-                let image;
-                if (
-                  edit.imageData.startsWith("data:image/jpeg") ||
-                  edit.imageData.startsWith("data:image/jpg")
-                ) {
-                  image = await pdfDoc.embedJpg(imageBytes);
-                } else if (edit.imageData.startsWith("data:image/png")) {
-                  image = await pdfDoc.embedPng(imageBytes);
-                }
-                if (image) {
-                  page.drawImage(image, {
-                    x: edit.x || 100,
-                    y: pageHeight - (edit.y || 100) - (edit.height || 150),
-                    width: edit.width || 200,
-                    height: edit.height || 150,
-                  });
-                }
-              } catch (imgErr) {
-                console.error("Error embedding image:", imgErr);
-              }
-            }
-            break;
-
-          case "highlight":
-            page.drawRectangle({
-              x: edit.path[0].x,
-              y: pageHeight - edit.path[0].y - 20,
-              width: edit.path[edit.path.length - 1].x - edit.path[0].x,
-              height: 20,
-              color: rgb(1, 1, 0),
-              opacity: 0.5,
-            });
-            break;
-
-          case "pen":
-            const flattenedPath = edit.path.map((p) => [p.x, pageHeight - p.y]);
-            if (flattenedPath.length >= 2) {
-              page.drawSvgPath(this.getSvgPath(flattenedPath), {
-                color: rgb(0, 0, 0),
-                borderWidth: 2,
-              });
-            }
-            break;
-
-          case "square":
-            page.drawRectangle({
-              x: edit.path[0].x,
-              y: pageHeight - edit.path[0].y - (edit.path[1].y - edit.path[0].y),
-              width: edit.path[1].x - edit.path[0].x,
-              height: edit.path[1].y - edit.path[0].y,
-              borderColor: rgb(1, 0, 0),
-              borderWidth: 2,
-            });
-            break;
-
-          default:
-            console.log("Unsupported edit type:", edit.type);
-        }
+    const imageBuffer = Buffer.from(base64Data, 'base64');
+    
+    // Determine image type and embed
+    let image;
+    const pdfDoc = page.doc;
+    
+    try {
+      if (dataURL.includes('image/png')) {
+        image = await pdfDoc.embedPng(imageBuffer);
+      } else if (dataURL.includes('image/jpeg') || dataURL.includes('image/jpg')) {
+        image = await pdfDoc.embedJpg(imageBuffer);
+      } else {
+        console.warn('Unsupported image type:', dataURL.split(';')[0]);
+        return;
       }
-    }
-  }
-
-  applyFormEdits(pdfDoc, formFields, font) {
-    if (!Array.isArray(formFields)) return;
-    try {
-      const form = pdfDoc.getForm();
-      if (font) form.updateFieldAppearances(font);
-      formFields.forEach((field) => {
-        try {
-          const formField = form.getField(field.name);
-          if (formField && field.value) {
-            formField.setText(field.value);
-          }
-        } catch (fieldError) {
-          console.log(`Could not set field ${field.name}:`, fieldError.message);
-        }
+      
+      // Draw image on page
+      page.drawImage(image, {
+        x: x || 0,
+        y: y || 0,
+        width: width || 100,
+        height: height || 100,
       });
-    } catch (formError) {
-      console.log("Form processing error:", formError.message);
+      
+    } catch (embedError) {
+      console.error('Error embedding image:', embedError);
+    }
+    
+  } catch (error) {
+    console.error('Error in embedImageInPDF:', error);
+  }
+}
+  // Apply edits
+  async applyEdits(req, res) {
+    try {
+      const { sessionId, edits } = req.body;
+      
+      if (!sessionId) {
+        return res.status(400).json({
+          success: false,
+          error: 'Session ID missing'
+        });
+      }
+
+      const sessionDir = path.join(__dirname, '../../../uploads/sessions', sessionId);
+      const editsFile = path.join(sessionDir, 'edits.json');
+      
+      await fs.writeFile(editsFile, JSON.stringify(edits, null, 2));
+
+      res.json({
+        success: true,
+        message: 'Edits applied successfully'
+      });
+
+    } catch (error) {
+      console.error('Apply edits error:', error);
+      res.status(500).json({
+        success: false,
+        error: error.message
+      });
     }
   }
 
-  hexToRgb(hex) {
-    if (!hex || hex === "#000000") return rgb(0, 0, 0);
-    hex = hex.replace(/^#/, "");
-    if (hex.length === 3) hex = hex.split("").map((c) => c + c).join("");
-    const bigint = parseInt(hex, 16);
-    const r = ((bigint >> 16) & 255) / 255;
-    const g = ((bigint >> 8) & 255) / 255;
-    const b = (bigint & 255) / 255;
-    return rgb(r, g, b);
+  // Download edited PDF
+  async downloadEdited(req, res) {
+    try {
+      const { sessionId } = req.params;
+      
+      if (!sessionId) {
+        return res.status(400).json({
+          success: false,
+          error: 'Session ID missing'
+        });
+      }
+
+      const sessionDir = path.join(__dirname, '../../../uploads/sessions', sessionId);
+      const exportedFilePath = path.join(sessionDir, 'exported.pdf');
+
+      try {
+        await fs.access(exportedFilePath);
+      } catch (error) {
+        return res.status(404).json({
+          success: false,
+          error: 'No edited PDF found. Please export first.'
+        });
+      }
+
+      const fileBuffer = await fs.readFile(exportedFilePath);
+
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', 'attachment; filename=edited-document.pdf');
+      res.send(fileBuffer);
+
+    } catch (error) {
+      console.error('Download error:', error);
+      res.status(500).json({
+        success: false,
+        error: error.message
+      });
+    }
   }
 
-  getSvgPath(points) {
-    if (!points || points.length < 2) return "";
-    const start = points[0];
-    const path = [`M ${start[0]} ${start[1]}`];
-    for (let i = 1; i < points.length; i++) {
-      path.push(`L ${points[i][0]} ${points[i][1]}`);
+  // Serve images
+  async serveImage(req, res) {
+    try {
+      const { sessionId, pageNum, imageId } = req.params;
+      
+      // Placeholder implementation
+      const placeholderSvg = '<svg width="100" height="100" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg"><rect width="100" height="100" fill="#F3F4F6"/><path d="M30 30H70M70 30V70M70 70H30M30 70V30" stroke="#8D8" stroke-width="2"/><text x="50" y="85" text-anchor="middle" fill="#999" font-size="12">Image</text></svg>';
+      
+      res.setHeader('Content-Type', 'image/svg+xml');
+      res.send(placeholderSvg);
+
+    } catch (error) {
+      console.error('Serve image error:', error);
+      res.status(500).send('Error serving image');
     }
-    return path.join(" ");
   }
 }
 
-module.exports = new EditController();
+const editController = new EditController();
+module.exports = editController;
