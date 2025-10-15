@@ -11,14 +11,17 @@ import {
   Image as ImageIcon,
   Edit,
   MousePointer,
-  Table,
-  Square,
-  Layers,
   Download,
   RefreshCw,
+  PenTool,
+  Square,
+  Circle,
+  Triangle,
+  Minus,
+  X,
+  Move,
 } from "lucide-react";
 
-// API configuration
 const API_BASE_URL = 'http://localhost:5000';
 
 const PDFEditor = () => {
@@ -31,23 +34,28 @@ const PDFEditor = () => {
   const [pdfStructure, setPdfStructure] = useState({
     pages: [],
     metadata: {},
-    layers: {
-      background: [],
-      images: [],
-      text: [],
-      tables: [],
-      annotations: []
-    }
+    fonts: {},
+    images: {}
   });
   const [selectedElement, setSelectedElement] = useState(null);
   const [sessionId, setSessionId] = useState(null);
   const [loadingProgress, setLoadingProgress] = useState(0);
+  const [edits, setEdits] = useState({});
+  const [userElements, setUserElements] = useState({});
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [currentPath, setCurrentPath] = useState([]);
+  const [signature, setSignature] = useState("");
+  const [showSignaturePopup, setShowSignaturePopup] = useState(false);
+  const [isDrawingSignature, setIsDrawingSignature] = useState(false);
+  const [signaturePaths, setSignaturePaths] = useState([]);
 
   const fileInputRef = useRef();
-  const domCanvasRef = useRef();
+  const canvasRef = useRef();
   const containerRef = useRef();
+  const drawingCanvasRef = useRef();
+  const signatureCanvasRef = useRef();
 
-  // File upload handler - sends to backend for processing
+  // File upload handler
   const handleFileUpload = async (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -65,7 +73,6 @@ const PDFEditor = () => {
       const formData = new FormData();
       formData.append('pdfFile', file);
 
-      // Simulate progress updates
       const progressInterval = setInterval(() => {
         setLoadingProgress(prev => {
           if (prev >= 90) {
@@ -84,12 +91,11 @@ const PDFEditor = () => {
       clearInterval(progressInterval);
 
       if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Upload failed: ${response.status} - ${errorText}`);
+        const errorData = await response.json();
+        throw new Error(errorData.error || `Upload failed: ${response.status}`);
       }
 
       const result = await response.json();
-      console.log('Upload result:', result); // Debug log
       
       if (result.success) {
         setSessionId(result.sessionId);
@@ -98,15 +104,12 @@ const PDFEditor = () => {
         setCurrentPage(1);
         setLoadingProgress(100);
         
+        // Load saved edits for this session
+        loadSavedEdits(result.sessionId);
+        
         setTimeout(() => {
           setStatus("editor");
-          if (result.structure && result.structure.pages && result.structure.pages[0]) {
-            console.log('Page structure to render:', result.structure.pages[0]);
-            renderStructuredDOM(result.structure.pages[0]);
-          } else {
-            console.error('No page structure found in response:', result);
-            alert('No page structure found in the response');
-          }
+          renderCurrentPage();
         }, 500);
       } else {
         throw new Error(result.error || 'Upload failed');
@@ -122,393 +125,468 @@ const PDFEditor = () => {
     }
   };
 
-  // Render structured DOM from backend data - IMPROVED VERSION
-  const renderStructuredDOM = (pageStructure) => {
-    if (!domCanvasRef.current || !pageStructure) {
-      console.warn('No DOM canvas or page structure available', { 
-        domCanvas: !!domCanvasRef.current, 
-        pageStructure: !!pageStructure 
-      });
-      return;
-    }
-
+  // Load saved edits from session
+  const loadSavedEdits = async (sessionId) => {
     try {
-      console.log('Rendering page structure:', pageStructure);
-      
-      // Clear existing content
-      domCanvasRef.current.innerHTML = '';
+      const response = await fetch(`${API_BASE_URL}/api/tools/pdf-editor/get-edits`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ sessionId })
+      });
 
-      // Set container dimensions from backend data
-      const containerWidth = pageStructure.width || 800;
-      const containerHeight = pageStructure.height || 1000;
-      
-      domCanvasRef.current.style.width = `${containerWidth}px`;
-      domCanvasRef.current.style.height = `${containerHeight}px`;
-      domCanvasRef.current.style.position = 'relative';
-      domCanvasRef.current.style.background = 'white';
-      domCanvasRef.current.style.border = '1px solid #ccc';
-      domCanvasRef.current.style.overflow = 'visible';
-      domCanvasRef.current.style.margin = '0 auto';
-
-      // Create layers container
-      const layersContainer = document.createElement('div');
-      layersContainer.className = 'layers-container';
-      layersContainer.style.position = 'absolute';
-      layersContainer.style.top = '0';
-      layersContainer.style.left = '0';
-      layersContainer.style.width = '100%';
-      layersContainer.style.height = '100%';
-      layersContainer.style.pointerEvents = 'none';
-      domCanvasRef.current.appendChild(layersContainer);
-
-      // Render all layers from backend data with better error handling
-      if (pageStructure.layers) {
-        console.log('Available layers:', Object.keys(pageStructure.layers));
-        
-        // Render in correct z-order
-        renderLayer('background', pageStructure.layers.background || [], layersContainer, 1);
-        renderLayer('shapes', pageStructure.layers.shapes || [], layersContainer, 2);
-        renderLayer('images', pageStructure.layers.images || [], layersContainer, 3);
-        renderLayer('tables', pageStructure.layers.tables || [], layersContainer, 4);
-        renderLayer('text', pageStructure.layers.text || [], layersContainer, 5);
-        renderLayer('annotations', pageStructure.layers.annotations || [], layersContainer, 6);
-      } else {
-        console.warn('No layers found in page structure');
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success && result.edits) {
+          setEdits(result.edits.text || {});
+          setUserElements(result.edits.elements || {});
+        }
       }
-
-      addInteractivity();
-      console.log('DOM rendering completed');
-
     } catch (error) {
-      console.error('Error rendering DOM:', error);
+      console.error('Error loading saved edits:', error);
     }
   };
 
-  // Render a specific layer - IMPROVED VERSION
-  const renderLayer = (layerType, elements, container, zIndex) => {
-    if (!elements || elements.length === 0) {
-      console.log(`No ${layerType} elements to render`);
+  // Render current page with all elements
+  const renderCurrentPage = () => {
+    if (!canvasRef.current || !pdfStructure.pages[currentPage - 1]) return;
+
+    const pageStructure = pdfStructure.pages[currentPage - 1];
+    const canvas = canvasRef.current;
+    
+    // Clear canvas
+    canvas.innerHTML = '';
+
+    // Set canvas dimensions
+    canvas.style.width = `${pageStructure.width}px`;
+    canvas.style.height = `${pageStructure.height}px`;
+    canvas.style.position = 'relative';
+    canvas.style.background = 'white';
+    canvas.style.border = '1px solid #ccc';
+
+    // Add background image
+    const backgroundImg = document.createElement('img');
+    backgroundImg.src = `${API_BASE_URL}/api/tools/pdf-editor/background/${sessionId}/page-${currentPage}.png`;
+    backgroundImg.style.position = 'absolute';
+    backgroundImg.style.top = '0';
+    backgroundImg.style.left = '0';
+    backgroundImg.style.width = '100%';
+    backgroundImg.style.height = '100%';
+    backgroundImg.style.pointerEvents = 'none';
+    backgroundImg.style.zIndex = '1';
+    canvas.appendChild(backgroundImg);
+
+    // Add editable text overlays
+    if (pageStructure.elements && pageStructure.elements.text) {
+      pageStructure.elements.text.forEach((textElement, index) => {
+        const textDiv = createTextOverlay(textElement);
+        canvas.appendChild(textDiv);
+      });
+    }
+
+    // Add user-created elements (shapes, images, signatures)
+    const pageElements = userElements[currentPage] || [];
+    pageElements.forEach((element, index) => {
+      const elementDiv = createUserElement(element);
+      canvas.appendChild(elementDiv);
+    });
+
+    // Initialize drawing canvas
+    initDrawingCanvas();
+  };
+
+  // Initialize drawing canvas for freehand drawing
+  const initDrawingCanvas = () => {
+    if (!canvasRef.current || !drawingCanvasRef.current) return;
+
+    const canvas = canvasRef.current;
+    const drawingCanvas = drawingCanvasRef.current;
+
+    drawingCanvas.style.position = 'absolute';
+    drawingCanvas.style.top = '0';
+    drawingCanvas.style.left = '0';
+    drawingCanvas.style.width = '100%';
+    drawingCanvas.style.height = '100%';
+    drawingCanvas.style.zIndex = '20';
+    drawingCanvas.style.pointerEvents = activeTool === 'draw' ? 'auto' : 'none';
+    drawingCanvas.style.cursor = activeTool === 'draw' ? 'crosshair' : 'default';
+
+    const ctx = drawingCanvas.getContext('2d');
+    ctx.strokeStyle = '#000000';
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+  };
+
+  // Create editable text overlay
+  const createTextOverlay = (textElement) => {
+    const div = document.createElement('div');
+    div.id = textElement.id;
+    div.className = 'text-overlay editable';
+    div.setAttribute('data-type', 'text');
+    div.setAttribute('data-original', textElement.originalContent);
+
+    const pos = textElement.position;
+    div.style.position = 'absolute';
+    div.style.left = `${pos.x}px`;
+    div.style.top = `${pos.y}px`;
+    div.style.width = `${pos.width}px`;
+    div.style.height = `${pos.height}px`;
+    div.style.zIndex = '10';
+    div.style.background = 'transparent';
+    div.style.border = 'none';
+
+    const style = textElement.style;
+    div.style.fontSize = `${style.fontSize}px`;
+    div.style.fontFamily = style.fontFamily;
+    div.style.fontWeight = style.fontWeight;
+    div.style.color = style.color;
+    div.style.textAlign = style.textAlign;
+    div.style.lineHeight = style.lineHeight;
+    div.style.whiteSpace = style.whiteSpace;
+    div.style.pointerEvents = 'auto';
+    div.style.cursor = 'text';
+
+    const editedContent = edits[textElement.id];
+    div.textContent = editedContent || textElement.content;
+
+    div.contentEditable = true;
+    div.style.outline = 'none';
+
+    div.addEventListener('focus', () => {
+      setSelectedElement(textElement);
+    });
+
+    div.addEventListener('blur', () => {
+      saveTextEdit(textElement.id, div.textContent);
+    });
+
+    div.addEventListener('input', () => {
+      handleTextEdit(textElement.id, div.textContent);
+    });
+
+    div.addEventListener('click', (e) => {
+      e.stopPropagation();
+      setSelectedElement(textElement);
+    });
+
+    return div;
+  };
+
+  // Create user-added elements (shapes, images, signatures)
+  const createUserElement = (element) => {
+    const div = document.createElement('div');
+    div.id = element.id;
+    div.className = `user-element ${element.type}`;
+    div.setAttribute('data-type', element.type);
+
+    div.style.position = 'absolute';
+    div.style.left = `${element.x}px`;
+    div.style.top = `${element.y}px`;
+    div.style.zIndex = '15';
+    div.style.pointerEvents = 'auto';
+    div.style.cursor = 'move';
+
+    switch (element.type) {
+      case 'rectangle':
+        div.style.width = `${element.width}px`;
+        div.style.height = `${element.height}px`;
+        div.style.border = '2px solid #000';
+        div.style.background = 'transparent';
+        break;
+      
+      case 'circle':
+        div.style.width = `${element.width}px`;
+        div.style.height = `${element.width}px`;
+        div.style.border = '2px solid #000';
+        div.style.borderRadius = '50%';
+        div.style.background = 'transparent';
+        break;
+      
+      case 'line':
+        div.style.width = `${element.width}px`;
+        div.style.height = '2px';
+        div.style.background = '#000';
+        div.style.transform = `rotate(${element.rotation || 0}deg)`;
+        break;
+      
+      case 'signature':
+        div.style.width = `${element.width}px`;
+        div.style.height = `${element.height}px`;
+        div.style.background = `url(${element.src}) no-repeat center center`;
+        div.style.backgroundSize = 'contain';
+        div.style.border = '1px dashed #ccc';
+        break;
+      
+      case 'image':
+        div.style.width = `${element.width}px`;
+        div.style.height = `${element.height}px`;
+        div.style.background = `url(${element.src}) no-repeat center center`;
+        div.style.backgroundSize = 'contain';
+        div.style.border = '1px dashed #ccc';
+        break;
+      
+      case 'text':
+        div.style.fontSize = `${element.fontSize || 16}px`;
+        div.style.color = element.color || '#000';
+        div.style.background = 'transparent';
+        div.style.padding = '4px';
+        div.style.border = '1px dashed #ccc';
+        div.style.minWidth = '50px';
+        div.style.minHeight = '20px';
+        div.textContent = element.text || 'Click to edit';
+        break;
+    }
+
+    // Make element draggable
+    div.addEventListener('mousedown', (e) => {
+      e.stopPropagation();
+      setSelectedElement(element);
+      startDrag(element, e);
+    });
+
+    // Make text elements editable
+    if (element.type === 'text') {
+      div.addEventListener('dblclick', (e) => {
+        e.stopPropagation();
+        div.contentEditable = true;
+        div.focus();
+      });
+
+      div.addEventListener('blur', () => {
+        div.contentEditable = false;
+        updateElementContent(element.id, div.textContent);
+      });
+    }
+
+    // Add resize handles for resizable elements
+    if (['rectangle', 'circle', 'image', 'signature', 'text'].includes(element.type)) {
+      addResizeHandles(div, element);
+    }
+
+    return div;
+  };
+
+  // Add resize handles to elements
+  const addResizeHandles = (elementDiv, element) => {
+    const handles = ['nw', 'ne', 'sw', 'se'];
+    
+    handles.forEach(handle => {
+      const handleDiv = document.createElement('div');
+      handleDiv.className = `resize-handle resize-${handle}`;
+      handleDiv.style.position = 'absolute';
+      handleDiv.style.width = '8px';
+      handleDiv.style.height = '8px';
+      handleDiv.style.background = '#000';
+      handleDiv.style.border = '1px solid #fff';
+      handleDiv.style.zIndex = '20';
+      handleDiv.style.cursor = `${handle}-resize`;
+
+      switch (handle) {
+        case 'nw': handleDiv.style.top = '-4px'; handleDiv.style.left = '-4px'; break;
+        case 'ne': handleDiv.style.top = '-4px'; handleDiv.style.right = '-4px'; break;
+        case 'sw': handleDiv.style.bottom = '-4px'; handleDiv.style.left = '-4px'; break;
+        case 'se': handleDiv.style.bottom = '-4px'; handleDiv.style.right = '-4px'; break;
+      }
+
+      handleDiv.addEventListener('mousedown', (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        startResize(element, handle, e);
+      });
+
+      elementDiv.appendChild(handleDiv);
+    });
+  };
+
+  // Start dragging element
+  const startDrag = (element, e) => {
+    e.preventDefault();
+    const rect = canvasRef.current.getBoundingClientRect();
+    const offsetX = e.clientX - rect.left - element.x;
+    const offsetY = e.clientY - rect.top - element.y;
+    
+    const handleMouseMove = (moveEvent) => {
+      const newX = moveEvent.clientX - rect.left - offsetX;
+      const newY = moveEvent.clientY - rect.top - offsetY;
+      
+      updateElementPosition(element.id, newX, newY);
+    };
+
+    const handleMouseUp = () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  };
+
+  // Start resizing element
+  const startResize = (element, handle, e) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const startWidth = element.width;
+    const startHeight = element.height;
+    const startXPos = element.x;
+    const startYPos = element.y;
+
+    const handleMouseMove = (moveEvent) => {
+      const deltaX = moveEvent.clientX - startX;
+      const deltaY = moveEvent.clientY - startY;
+
+      let newWidth = startWidth;
+      let newHeight = startHeight;
+      let newX = startXPos;
+      let newY = startYPos;
+
+      if (handle.includes('e')) newWidth = Math.max(20, startWidth + deltaX);
+      if (handle.includes('w')) {
+        newWidth = Math.max(20, startWidth - deltaX);
+        newX = startXPos + deltaX;
+      }
+      if (handle.includes('s')) newHeight = Math.max(20, startHeight + deltaY);
+      if (handle.includes('n')) {
+        newHeight = Math.max(20, startHeight - deltaY);
+        newY = startYPos + deltaY;
+      }
+
+      updateElementSizeAndPosition(
+        element.id, 
+        newWidth, 
+        newHeight,
+        newX,
+        newY
+      );
+    };
+
+    const handleMouseUp = () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  };
+
+  // Update element position
+  const updateElementPosition = (elementId, x, y) => {
+    setUserElements(prev => {
+      const newElements = { ...prev };
+      const pageElements = newElements[currentPage] || [];
+      newElements[currentPage] = pageElements.map(el => 
+        el.id === elementId ? { ...el, x, y } : el
+      );
+      return newElements;
+    });
+  };
+
+  // Update element size and position
+  const updateElementSizeAndPosition = (elementId, width, height, x, y) => {
+    setUserElements(prev => {
+      const newElements = { ...prev };
+      const pageElements = newElements[currentPage] || [];
+      newElements[currentPage] = pageElements.map(el => 
+        el.id === elementId ? { ...el, width, height, x, y } : el
+      );
+      return newElements;
+    });
+  };
+
+  // Update element content
+  const updateElementContent = (elementId, text) => {
+    setUserElements(prev => {
+      const newElements = { ...prev };
+      const pageElements = newElements[currentPage] || [];
+      newElements[currentPage] = pageElements.map(el => 
+        el.id === elementId ? { ...el, text } : el
+      );
+      return newElements;
+    });
+  };
+
+  // Handle canvas click for adding elements at click position
+  const handleCanvasClick = (e) => {
+    if (activeTool === 'select') return;
+    
+    const canvas = canvasRef.current;
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    // Don't add element if clicking on existing element or resize handle
+    if (e.target !== canvas && 
+        e.target !== drawingCanvasRef.current && 
+        !e.target.classList.contains('resize-handle')) {
       return;
     }
 
-    console.log(`Rendering ${elements.length} ${layerType} elements`);
-    
-    const layer = document.createElement('div');
-    layer.className = `${layerType}-layer`;
-    layer.style.position = 'absolute';
-    layer.style.top = '0';
-    layer.style.left = '0';
-    layer.style.width = '100%';
-    layer.style.height = '100%';
-    layer.style.zIndex = zIndex;
-    layer.style.pointerEvents = 'none';
-    container.appendChild(layer);
-
-    elements.forEach((element, index) => {
-      try {
-        renderElement(element, layer, layerType, index);
-      } catch (error) {
-        console.error(`Error rendering ${layerType} element ${index}:`, error);
-      }
-    });
-  };
-
-  // Render individual element - IMPROVED VERSION
-  const renderElement = (element, container, layerType, index) => {
-    const elementEl = document.createElement(element.tag || 'div');
-    
-    elementEl.id = element.id || `${layerType}-${index}`;
-    elementEl.dataset.type = element.type;
-    elementEl.dataset.layer = layerType;
-    elementEl.dataset.page = element.page;
-    elementEl.className = `pdf-element ${layerType}-element`;
-
-    // Apply basic positioning styles
-    const x = element.x || 0;
-    const y = element.y || 0;
-    const width = element.width || 100;
-    const height = element.height || 20;
-
-    elementEl.style.position = 'absolute';
-    elementEl.style.left = `${x}px`;
-    elementEl.style.top = `${y}px`;
-    elementEl.style.width = `${width}px`;
-    elementEl.style.height = `${height}px`;
-    elementEl.style.pointerEvents = 'auto';
-    elementEl.style.boxSizing = 'border-box';
-
-    // Apply custom styles from backend if available
-    if (element.style && typeof element.style === 'object') {
-      Object.keys(element.style).forEach(styleKey => {
-        if (typeof element.style[styleKey] === 'string') {
-          elementEl.style[styleKey] = element.style[styleKey];
-        }
-      });
-    }
-
-    // Set content
-    if (element.content) {
-      elementEl.textContent = element.content;
-    } else if (element.originalContent) {
-      elementEl.textContent = element.originalContent;
-    }
-
-    // Add specific element type handling
-    switch (element.type) {
+    switch (activeTool) {
       case 'text':
-        makeTextEditable(elementEl, element);
-        // Ensure text is visible
-        elementEl.style.color = element.color || '#000000';
-        elementEl.style.fontSize = element.fontSize ? `${element.fontSize}px` : '12px';
-        elementEl.style.fontFamily = element.fontName || 'Arial, sans-serif';
-        elementEl.style.whiteSpace = 'pre-wrap';
-        elementEl.style.overflow = 'visible';
-        break;
-        
-      case 'image':
-        enhanceImageElement(elementEl, element);
-        break;
-        
-      case 'table':
-        enhanceTableElement(elementEl, element);
-        break;
-        
-      case 'annotation':
-        enhanceAnnotationElement(elementEl, element);
-        break;
-        
-      case 'shape':
-        enhanceShapeElement(elementEl, element);
-        break;
-        
-      default:
-        elementEl.style.backgroundColor = 'rgba(200, 200, 200, 0.3)';
-        elementEl.style.border = '1px dashed #999';
-    }
-
-    container.appendChild(elementEl);
-    console.log(`Rendered ${element.type} element at (${x}, ${y})`);
-  };
-
-  // Make text elements editable
-  const makeTextEditable = (elementEl, element) => {
-    elementEl.contentEditable = true;
-    elementEl.style.cursor = 'text';
-    elementEl.style.background = 'transparent';
-    elementEl.style.border = '1px solid transparent';
-    elementEl.style.padding = '2px';
-    elementEl.style.minHeight = '16px';
-
-    elementEl.addEventListener('mouseenter', () => {
-      elementEl.style.background = 'rgba(255, 255, 0, 0.2)';
-      elementEl.style.border = '1px dashed #0066cc';
-    });
-
-    elementEl.addEventListener('mouseleave', () => {
-      if (!elementEl.isSameNode(document.activeElement)) {
-        elementEl.style.background = 'transparent';
-        elementEl.style.border = '1px solid transparent';
-      }
-    });
-
-    elementEl.addEventListener('focus', () => {
-      elementEl.style.background = 'rgba(255, 255, 0, 0.3)';
-      elementEl.style.border = '1px solid #0066cc';
-      setSelectedElement(element);
-    });
-
-    elementEl.addEventListener('blur', () => {
-      elementEl.style.background = 'transparent';
-      elementEl.style.border = '1px solid transparent';
-      saveTextEdit(element.id, elementEl.textContent);
-    });
-
-    elementEl.addEventListener('input', (e) => {
-      handleTextEdit(element.id, e.target.textContent);
-    });
-  };
-
-  // Enhance image elements
-  const enhanceImageElement = (elementEl, element) => {
-    elementEl.style.cursor = 'move';
-    elementEl.style.border = '2px solid #ff4444';
-    elementEl.style.background = 'rgba(255, 68, 68, 0.1)';
-    elementEl.style.display = 'flex';
-    elementEl.style.alignItems = 'center';
-    elementEl.style.justifyContent = 'center';
-    elementEl.style.overflow = 'hidden';
-
-    // Load image if URL is provided
-    if (element.imageUrl) {
-      const img = document.createElement('img');
-      img.src = `${API_BASE_URL}${element.imageUrl}`;
-      img.style.maxWidth = '100%';
-      img.style.maxHeight = '100%';
-      img.style.objectFit = 'contain';
-      elementEl.appendChild(img);
-    } else if (element.imageData) {
-      const img = document.createElement('img');
-      img.src = element.imageData;
-      img.style.maxWidth = '100%';
-      img.style.maxHeight = '100%';
-      img.style.objectFit = 'contain';
-      elementEl.appendChild(img);
-    } else {
-      // Placeholder for images
-      elementEl.innerHTML = '<div style="color: #ff4444; font-size: 12px; text-align: center;">IMAGE</div>';
-    }
-
-    elementEl.addEventListener('mouseenter', () => {
-      elementEl.style.boxShadow = '0 4px 16px rgba(255, 68, 68, 0.4)';
-    });
-
-    elementEl.addEventListener('mouseleave', () => {
-      elementEl.style.boxShadow = 'none';
-    });
-  };
-
-  // Enhance table elements
-  const enhanceTableElement = (elementEl, element) => {
-    elementEl.style.cursor = 'move';
-    elementEl.style.border = '2px solid #0066cc';
-    elementEl.style.background = 'rgba(0, 102, 204, 0.05)';
-    elementEl.style.padding = '5px';
-    elementEl.style.overflow = 'auto';
-
-    // Create table structure if rows data exists
-    if (element.rows && element.rows.length > 0) {
-      const tableContent = document.createElement('div');
-      tableContent.style.width = '100%';
-      tableContent.style.height = '100%';
-      tableContent.style.background = 'rgba(255, 255, 255, 0.95)';
-      tableContent.style.borderRadius = '4px';
-      tableContent.style.overflow = 'hidden';
-      tableContent.style.fontSize = '10px';
-
-      element.rows.forEach((row, rowIndex) => {
-        const rowEl = document.createElement('div');
-        rowEl.style.display = 'flex';
-        rowEl.style.borderBottom = rowIndex < element.rows.length - 1 ? '1px solid #e0e0e0' : 'none';
-        
-        row.cells.forEach((cell, cellIndex) => {
-          const cellEl = document.createElement('div');
-          cellEl.style.flex = '1';
-          cellEl.style.padding = '2px 4px';
-          cellEl.style.borderRight = cellIndex < row.cells.length - 1 ? '1px solid #e0e0e0' : 'none';
-          cellEl.style.fontSize = '10px';
-          cellEl.style.overflow = 'hidden';
-          cellEl.style.textOverflow = 'ellipsis';
-          cellEl.style.whiteSpace = 'nowrap';
-          cellEl.textContent = cell.content || '';
-          cellEl.title = cell.content || '';
-          rowEl.appendChild(cellEl);
+        addElementAtPosition('text', x, y, {
+          text: 'New Text',
+          fontSize: 16,
+          width: 100,
+          height: 30
         });
-
-        tableContent.appendChild(rowEl);
-      });
-
-      elementEl.appendChild(tableContent);
-    } else {
-      elementEl.innerHTML = '<div style="color: #0066cc; font-size: 12px; text-align: center;">TABLE</div>';
-    }
-
-    elementEl.addEventListener('mouseenter', () => {
-      elementEl.style.boxShadow = '0 4px 16px rgba(0, 102, 204, 0.3)';
-    });
-
-    elementEl.addEventListener('mouseleave', () => {
-      elementEl.style.boxShadow = 'none';
-    });
-  };
-
-  // Enhance annotation elements
-  const enhanceAnnotationElement = (elementEl, element) => {
-    elementEl.style.cursor = 'pointer';
-    elementEl.style.border = '1px dotted #00aa00';
-    elementEl.style.background = 'rgba(0, 170, 0, 0.1)';
-    elementEl.style.display = 'flex';
-    elementEl.style.alignItems = 'center';
-    elementEl.style.justifyContent = 'center';
-    elementEl.style.fontSize = '10px';
-    elementEl.style.color = '#006400';
-    
-    if (!element.content) {
-      elementEl.innerHTML = `
-        <div style="text-align: center;">
-          <div>💬</div>
-          <div>${element.annotationType || 'Annotation'}</div>
-        </div>
-      `;
-    }
-
-    elementEl.addEventListener('mouseenter', () => {
-      elementEl.style.boxShadow = '0 2px 12px rgba(0, 170, 0, 0.3)';
-    });
-
-    elementEl.addEventListener('mouseleave', () => {
-      elementEl.style.boxShadow = 'none';
-    });
-  };
-
-  // Enhance shape elements
-  const enhanceShapeElement = (elementEl, element) => {
-    elementEl.style.border = '1px solid #888';
-    elementEl.style.background = 'rgba(136, 136, 136, 0.1)';
-    elementEl.style.display = 'flex';
-    elementEl.style.alignItems = 'center';
-    elementEl.style.justifyContent = 'center';
-    elementEl.innerHTML = '<div style="color: #666; font-size: 10px;">SHAPE</div>';
-  };
-
-  // Add interactivity to elements
-  const addInteractivity = () => {
-    const allElements = domCanvasRef.current.querySelectorAll('.pdf-element');
-    console.log(`Added interactivity to ${allElements.length} elements`);
-    
-    allElements.forEach(el => {
-      el.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const elementType = el.dataset.type;
-        const elementId = el.id;
-        
-        setSelectedElement({
-          id: elementId,
-          type: elementType,
-          element: el
+        break;
+      case 'rectangle':
+        addElementAtPosition('rectangle', x, y, {
+          width: 150,
+          height: 100
         });
-        
-        console.log(`Selected element: ${elementType} (${elementId})`);
-      });
-    });
+        break;
+      case 'circle':
+        addElementAtPosition('circle', x, y, {
+          width: 100,
+          height: 100
+        });
+        break;
+      case 'line':
+        addElementAtPosition('line', x, y, {
+          width: 150,
+          height: 2
+        });
+        break;
+    }
 
-    // Canvas click to deselect
-    domCanvasRef.current.addEventListener('click', (e) => {
-      if (e.target === domCanvasRef.current) {
-        setSelectedElement(null);
-      }
-    });
+    // Reset to select tool after placing element
+    setActiveTool('select');
+  };
+
+  // Add element at specific position
+  const addElementAtPosition = (type, x, y, options = {}) => {
+    const newElement = {
+      id: `${type}-${Date.now()}`,
+      type,
+      x: x - (options.width || 100) / 2, // Center the element
+      y: y - (options.height || 100) / 2,
+      width: options.width || 100,
+      height: options.height || 100,
+      ...options
+    };
+
+    setUserElements(prev => ({
+      ...prev,
+      [currentPage]: [...(prev[currentPage] || []), newElement]
+    }));
+
+    setSelectedElement(newElement);
+    
+    // Re-render to show the new element with drag handles
+    setTimeout(() => {
+      renderCurrentPage();
+    }, 0);
   };
 
   // Handle text editing
   const handleTextEdit = (elementId, newContent) => {
-    console.log(`Editing text for ${elementId}:`, newContent);
-    
-    // Update local state immediately for responsive editing
-    setPdfStructure(prev => {
-      const updated = { ...prev };
-      updated.pages = updated.pages.map(page => ({
-        ...page,
-        layers: {
-          ...page.layers,
-          text: page.layers.text.map(textEl => 
-            textEl.id === elementId 
-              ? { ...textEl, content: newContent }
-              : textEl
-          )
-        }
-      }));
-      return updated;
-    });
+    setEdits(prev => ({
+      ...prev,
+      [elementId]: newContent
+    }));
   };
 
   // Save text edits to backend
@@ -527,292 +605,789 @@ const PDFEditor = () => {
       });
 
       if (!response.ok) {
-        console.error('Failed to save text edit');
-      } else {
-        console.log('Text edit saved successfully');
+        throw new Error('Failed to save text edit');
       }
     } catch (error) {
       console.error('Error saving text edit:', error);
     }
   };
 
-  // Navigation
-  const goToPage = (pageNum) => {
-    if (pageNum >= 1 && pageNum <= totalPages) {
-      setCurrentPage(pageNum);
-      const pageStructure = pdfStructure.pages[pageNum - 1];
-      if (pageStructure) {
-        renderStructuredDOM(pageStructure);
-      }
-    }
+  // Add new element
+  const addElement = (type, options = {}) => {
+    // Set active tool to the element type so user can click to place it
+    setActiveTool(type);
   };
 
-  // Export PDF
-  const handleExport = async () => {
-    if (!sessionId) {
-      alert('No session ID found. Please upload a PDF first.');
+  // Signature drawing functions
+  const startSignatureDrawing = (e) => {
+    const canvas = signatureCanvasRef.current;
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    setIsDrawingSignature(true);
+    setSignaturePaths(prev => [...prev, [{ x, y }]]);
+
+    const ctx = canvas.getContext('2d');
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.strokeStyle = '#000000';
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+  };
+
+  const drawSignature = (e) => {
+    if (!isDrawingSignature) return;
+
+    const canvas = signatureCanvasRef.current;
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    setSignaturePaths(prev => {
+      const newPaths = [...prev];
+      newPaths[newPaths.length - 1].push({ x, y });
+      return newPaths;
+    });
+
+    const ctx = canvas.getContext('2d');
+    ctx.lineTo(x, y);
+    ctx.stroke();
+  };
+
+  const stopSignatureDrawing = () => {
+    setIsDrawingSignature(false);
+  };
+
+  const clearSignature = () => {
+    const canvas = signatureCanvasRef.current;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    setSignaturePaths([]);
+  };
+
+  const saveSignature = () => {
+    const canvas = signatureCanvasRef.current;
+    const dataURL = canvas.toDataURL();
+    
+    // Add signature at a default position (user can drag it later)
+    addElementAtPosition('signature', 200, 150, {
+      src: dataURL,
+      width: 200,
+      height: 100
+    });
+    
+    setShowSignaturePopup(false);
+    clearSignature();
+  };
+
+  // Add signature from text
+  const addTextSignature = () => {
+    if (!signature.trim()) {
+      alert('Please enter your signature');
       return;
     }
 
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/tools/pdf-editor/export`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          sessionId,
-          structure: pdfStructure
-        })
+    addElementAtPosition('text', 200, 150, {
+      text: signature,
+      fontSize: 24,
+      fontFamily: 'cursive',
+      width: signature.length * 15,
+      height: 30
+    });
+    setSignature("");
+  };
+
+  // Add image
+  const handleImageUpload = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      addElementAtPosition('image', 200, 150, {
+        src: e.target.result,
+        width: 150,
+        height: 150
+      });
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // Drawing functions
+  const startDrawing = (e) => {
+    if (activeTool !== 'draw') return;
+
+    const canvas = drawingCanvasRef.current;
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    setIsDrawing(true);
+    setCurrentPath([{ x, y }]);
+
+    const ctx = canvas.getContext('2d');
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+  };
+
+  const draw = (e) => {
+    if (!isDrawing || activeTool !== 'draw') return;
+
+    const canvas = drawingCanvasRef.current;
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    setCurrentPath(prev => [...prev, { x, y }]);
+
+    const ctx = canvas.getContext('2d');
+    ctx.lineTo(x, y);
+    ctx.stroke();
+  };
+
+  const stopDrawing = () => {
+    if (!isDrawing) return;
+
+    setIsDrawing(false);
+    
+    // Save drawing as image element
+    if (currentPath.length > 1) {
+      const canvas = drawingCanvasRef.current;
+      const dataURL = canvas.toDataURL();
+      
+      addElementAtPosition('image', 200, 150, {
+        src: dataURL,
+        width: 200,
+        height: 150
       });
 
-      if (response.ok) {
-        const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'edited-document.pdf';
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
-      } else {
-        const errorText = await response.text();
-        throw new Error(`Export failed: ${response.status} - ${errorText}`);
-      }
-    } catch (error) {
-      console.error('Export error:', error);
-      alert('Error exporting PDF: ' + error.message);
+      // Clear drawing canvas
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
     }
   };
 
-  // Render current page
+  // Apply all edits and save to backend
+const handleApplyEdits = async () => {
+  try {
+    setIsProcessing(true);
+    
+    // Collect all current text edits from the DOM
+    const textOverlays = document.querySelectorAll('.text-overlay.editable');
+    const currentEdits = { ...edits };
+    
+    textOverlays.forEach(overlay => {
+      const elementId = overlay.id;
+      const currentContent = overlay.textContent || '';
+      if (elementId && currentContent !== overlay.getAttribute('data-original')) {
+        currentEdits[elementId] = currentContent;
+      }
+    });
+
+    // Update state with current edits
+    setEdits(currentEdits);
+
+    const response = await fetch(`${API_BASE_URL}/api/tools/pdf-editor/apply-edits`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        sessionId,
+        edits: {
+          text: currentEdits,
+          elements: userElements
+        }
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to apply edits');
+    }
+
+    const result = await response.json();
+    
+    if (result.success) {
+      alert('All edits applied and saved successfully!');
+      console.log('Edits saved:', {
+        textEdits: Object.keys(currentEdits).length,
+        userElements: Object.keys(userElements).length
+      });
+    } else {
+      throw new Error(result.error || 'Failed to apply edits');
+    }
+
+  } catch (error) {
+    console.error('Apply edits error:', error);
+    alert('Error applying edits: ' + error.message);
+  } finally {
+    setIsProcessing(false);
+  }
+};
+
+  // Export PDF with all elements
+ // In TextEditor.jsx - Enhanced handleExport
+const handleExport = async () => {
+  try {
+    setIsProcessing(true);
+    
+    // First apply all edits
+    await handleApplyEdits();
+
+    // Get canvas data for drawings
+    const drawingCanvas = drawingCanvasRef.current;
+    let drawingDataURL = null;
+    if (drawingCanvas && activeTool === 'draw') {
+      drawingDataURL = drawingCanvas.toDataURL('image/png');
+    }
+
+    // Clean edits data - remove any undefined values
+    const cleanedEdits = {};
+    if (edits) {
+      Object.keys(edits).forEach(key => {
+        if (edits[key] !== undefined && edits[key] !== null) {
+          cleanedEdits[key] = String(edits[key]); // Ensure string values
+        }
+      });
+    }
+
+    // Clean user elements data
+    const cleanedUserElements = {};
+    if (userElements) {
+      Object.keys(userElements).forEach(pageKey => {
+        if (userElements[pageKey] && Array.isArray(userElements[pageKey])) {
+          cleanedUserElements[pageKey] = userElements[pageKey].map(element => ({
+            ...element,
+            text: element.text ? String(element.text) : undefined,
+            content: element.content ? String(element.content) : undefined
+          })).filter(element => element !== null && element !== undefined);
+        }
+      });
+    }
+
+    // Prepare all elements including drawings
+    const exportData = {
+      sessionId,
+      edits: {
+        text: cleanedEdits,
+        elements: cleanedUserElements,
+        drawings: drawingDataURL ? {
+          page: currentPage,
+          dataURL: drawingDataURL,
+          width: drawingCanvas.width,
+          height: drawingCanvas.height
+        } : null
+      }
+    };
+
+    console.log('Exporting data:', {
+      textEdits: Object.keys(cleanedEdits).length,
+      userElements: Object.keys(cleanedUserElements).length,
+      hasDrawings: !!drawingDataURL
+    });
+
+    // Then export
+    const response = await fetch(`${API_BASE_URL}/api/tools/pdf-editor/export`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(exportData)
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || 'Export failed');
+    }
+
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `edited-document-${sessionId}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+
+    alert('PDF exported successfully!');
+
+  } catch (error) {
+    console.error('Export error:', error);
+    alert('Error exporting PDF: ' + error.message);
+  } finally {
+    setIsProcessing(false);
+  }
+};
+
+  // Reset editor
+  const handleReset = () => {
+    setStatus("upload");
+    setCurrentPage(1);
+    setTotalPages(0);
+    setPdfStructure({ pages: [], metadata: {}, fonts: {}, images: {} });
+    setSessionId(null);
+    setSelectedElement(null);
+    setEdits({});
+    setUserElements({});
+    
+    if (canvasRef.current) {
+      canvasRef.current.innerHTML = '';
+    }
+    
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  // Navigation
+  const goToPreviousPage = () => {
+    if (currentPage > 1) {
+      setCurrentPage(currentPage - 1);
+    }
+  };
+
+  const goToNextPage = () => {
+    if (currentPage < totalPages) {
+      setCurrentPage(currentPage + 1);
+    }
+  };
+
+  // Zoom
+  const zoomIn = () => setScale(prev => Math.min(prev + 0.1, 3.0));
+  const zoomOut = () => setScale(prev => Math.max(prev - 0.1, 0.3));
+
+  // Re-render when page changes or tools change
   useEffect(() => {
-    if (status === "editor" && pdfStructure.pages.length > 0) {
-      const pageStructure = pdfStructure.pages[currentPage - 1];
-      if (pageStructure) {
-        renderStructuredDOM(pageStructure);
-      }
+    if (status === "editor") {
+      renderCurrentPage();
     }
-  }, [currentPage, status, pdfStructure]);
+  }, [currentPage, status, userElements]);
 
-  // Get current page structure for display
-  const getCurrentPageStructure = () => {
-    return pdfStructure.pages[currentPage - 1] || { layers: {} };
-  };
-
-  const currentPageStructure = getCurrentPageStructure();
+  // Update drawing canvas when tool changes
+  useEffect(() => {
+    if (drawingCanvasRef.current) {
+      drawingCanvasRef.current.style.pointerEvents = activeTool === 'draw' ? 'auto' : 'none';
+      drawingCanvasRef.current.style.cursor = activeTool === 'draw' ? 'crosshair' : 'default';
+    }
+  }, [activeTool]);
 
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <header className="bg-white shadow-sm border-b">
+      <div className="bg-white shadow-sm border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center">
-              <File className="h-8 w-8 text-blue-600 mr-3" />
-              <h1 className="text-xl font-semibold text-gray-900">
-                PDF Editor
-              </h1>
+          <div className="flex justify-between items-center py-4">
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900">PDF Editor</h1>
+              <p className="text-gray-600">
+                Edit PDFs with advanced tools
+              </p>
             </div>
-            
-            {status === "editor" && (
-              <div className="flex items-center space-x-4">
-                <button
-                  onClick={handleExport}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors flex items-center"
-                >
-                  <Download className="h-4 w-4 mr-2" />
-                  Export PDF
-                </button>
-              </div>
-            )}
+            <div className="flex items-center gap-2 text-sm text-gray-500">
+              {sessionId && (
+                <span className="bg-gray-100 px-3 py-1 rounded">
+                  Session: {sessionId?.substring(0, 8)}...
+                </span>
+              )}
+            </div>
           </div>
         </div>
-      </header>
+      </div>
 
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {status === "upload" && (
-          <div className="flex flex-col items-center justify-center min-h-[70vh]">
-            <div className="text-center max-w-md">
-              <File className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-              <h2 className="text-2xl font-bold text-gray-900 mb-2">
-                Upload PDF to Edit
-              </h2>
-              <p className="text-gray-600 mb-6">
-                Upload a PDF document to extract and edit text, images, tables, and annotations.
-              </p>
-              <input
-                type="file"
-                accept=".pdf"
-                onChange={handleFileUpload}
-                ref={fileInputRef}
-                className="hidden"
-              />
+      {/* Signature Popup */}
+      {showSignaturePopup && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-96">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold">Draw Your Signature</h3>
               <button
-                onClick={() => fileInputRef.current?.click()}
-                className="w-full bg-blue-600 text-white py-3 px-6 rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center"
-                disabled={isProcessing}
+                onClick={() => setShowSignaturePopup(false)}
+                className="text-gray-500 hover:text-gray-700"
               >
-                <UploadCloud className="h-5 w-5 mr-2" />
-                {isProcessing ? "Processing..." : "Choose PDF File"}
+                <X className="w-5 h-5" />
               </button>
             </div>
+            
+            <div className="border-2 border-dashed border-gray-300 rounded-lg mb-4">
+              <canvas
+                ref={signatureCanvasRef}
+                width={350}
+                height={200}
+                onMouseDown={startSignatureDrawing}
+                onMouseMove={drawSignature}
+                onMouseUp={stopSignatureDrawing}
+                onMouseLeave={stopSignatureDrawing}
+                className="w-full h-50 cursor-crosshair bg-white"
+              />
+            </div>
+            
+            <div className="flex justify-between gap-2">
+              <button
+                onClick={clearSignature}
+                className="flex-1 px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600"
+              >
+                Clear
+              </button>
+              <button
+                onClick={saveSignature}
+                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+              >
+                Save Signature
+              </button>
+            </div>
+            
+            <div className="mt-4 pt-4 border-t border-gray-200">
+              <p className="text-sm text-gray-600 mb-2">Or use text signature:</p>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={signature}
+                  onChange={(e) => setSignature(e.target.value)}
+                  placeholder="Enter your signature"
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded text-sm"
+                />
+                <button
+                  onClick={addTextSignature}
+                  className="px-4 py-2 bg-green-600 text-white rounded text-sm hover:bg-green-700"
+                >
+                  Add Text
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Main Content */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {status === "upload" && (
+          <div className="flex flex-col items-center justify-center p-8 border-2 border-dashed border-gray-300 rounded-lg bg-gray-50">
+            <File className="w-16 h-16 text-gray-400 mb-4" />
+            <h2 className="text-xl font-semibold text-gray-700 mb-2">
+              Upload PDF to Edit
+            </h2>
+            <p className="text-gray-500 mb-6 text-center">
+              Upload a PDF file to start editing with advanced tools
+            </p>
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleFileUpload}
+              accept=".pdf"
+              className="hidden"
+            />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isProcessing}
+              className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              <UploadCloud className="w-5 h-5" />
+              {isProcessing ? "Processing..." : "Choose PDF File"}
+            </button>
           </div>
         )}
 
         {status === "processing" && (
-          <div className="flex flex-col items-center justify-center min-h-[70vh]">
-            <div className="text-center max-w-md">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-              <h3 className="text-lg font-medium text-gray-900 mb-2">
-                Processing PDF...
-              </h3>
-              <p className="text-gray-600 mb-4">
-                Extracting text, images, tables, and annotations from your document.
-              </p>
-              <div className="w-full bg-gray-200 rounded-full h-2">
-                <div 
-                  className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                  style={{ width: `${loadingProgress}%` }}
-                ></div>
-              </div>
-              <p className="text-sm text-gray-500 mt-2">
-                {loadingProgress}% complete
-              </p>
+          <div className="flex flex-col items-center justify-center p-8 border-2 border-dashed border-gray-300 rounded-lg bg-gray-50">
+            <RefreshCw className="w-16 h-16 text-blue-600 mb-4 animate-spin" />
+            <h2 className="text-xl font-semibold text-gray-700 mb-2">
+              Processing PDF...
+            </h2>
+            <p className="text-gray-500 mb-4 text-center">
+              Preparing PDF for editing
+            </p>
+            <div className="w-full max-w-md bg-gray-200 rounded-full h-2 mb-4">
+              <div
+                className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                style={{ width: `${loadingProgress}%` }}
+              ></div>
             </div>
+            <p className="text-sm text-gray-600">{loadingProgress}%</p>
           </div>
         )}
 
         {status === "editor" && (
-          <div className="flex flex-col h-[calc(100vh-120px)]">
-            {/* Stats Bar */}
-            <div className="bg-blue-50 border-b border-blue-200 px-4 py-2">
-              <div className="max-w-7xl mx-auto flex flex-wrap gap-4 text-sm">
-                <div className="flex items-center space-x-2">
-                  <div className="w-3 h-3 bg-red-400 rounded border border-red-600"></div>
-                  <span>Images: {currentPageStructure.layers.images?.length || 0}</span>
+          <div className="flex flex-col h-[calc(100vh-200px)]">
+            {/* Top Toolbar */}
+            <div className="flex items-center justify-between p-4 bg-white border-b border-gray-200">
+              <div className="flex items-center gap-4">
+                <button
+                  onClick={handleReset}
+                  className="flex items-center gap-2 px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                  New PDF
+                </button>
+                
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-600">
+                    Page {currentPage} of {totalPages}
+                  </span>
+                  <button
+                    onClick={goToPreviousPage}
+                    disabled={currentPage <= 1}
+                    className="p-1 text-gray-600 hover:bg-gray-100 rounded disabled:opacity-50"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={goToNextPage}
+                    disabled={currentPage >= totalPages}
+                    className="p-1 text-gray-600 hover:bg-gray-100 rounded disabled:opacity-50"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
                 </div>
-                <div className="flex items-center space-x-2">
-                  <div className="w-3 h-3 bg-green-400 rounded border border-green-600"></div>
-                  <span>Text: {currentPageStructure.layers.text?.length || 0}</span>
+              </div>
+
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={zoomOut}
+                    className="p-2 text-gray-600 hover:bg-gray-100 rounded"
+                  >
+                    <ZoomOut className="w-4 h-4" />
+                  </button>
+                  <span className="text-sm text-gray-600">{Math.round(scale * 100)}%</span>
+                  <button
+                    onClick={zoomIn}
+                    className="p-2 text-gray-600 hover:bg-gray-100 rounded"
+                  >
+                    <ZoomIn className="w-4 h-4" />
+                  </button>
                 </div>
-                <div className="flex items-center space-x-2">
-                  <div className="w-3 h-3 bg-blue-400 rounded border border-blue-600"></div>
-                  <span>Tables: {currentPageStructure.layers.tables?.length || 0}</span>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <div className="w-3 h-3 bg-yellow-400 rounded border border-yellow-600"></div>
-                  <span>Annotations: {currentPageStructure.layers.annotations?.length || 0}</span>
+
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleApplyEdits}
+                    className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                  >
+                    <Edit className="w-4 h-4" />
+                    Save Edits
+                  </button>
+                  <button
+                    onClick={handleExport}
+                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                  >
+                    <Download className="w-4 h-4" />
+                    Export PDF
+                  </button>
                 </div>
               </div>
             </div>
 
+            {/* Main Editor Area */}
             <div className="flex flex-1 overflow-hidden">
-              {/* Sidebar */}
-              <div className="w-16 bg-white border-r flex flex-col items-center py-4 space-y-4">
+              {/* Left Sidebar - Tools */}
+              <div className="w-16 bg-gray-50 border-r border-gray-200 p-2 flex flex-col items-center gap-2">
                 <button
                   onClick={() => setActiveTool("select")}
-                  className={`p-2 rounded ${activeTool === "select" ? "bg-blue-100 text-blue-600" : "text-gray-600"}`}
+                  className={`p-3 rounded-lg ${
+                    activeTool === "select" ? "bg-blue-100 text-blue-600" : "text-gray-600 hover:bg-gray-200"
+                  }`}
                   title="Select"
                 >
-                  <MousePointer className="h-5 w-5" />
+                  <MousePointer className="w-5 h-5" />
                 </button>
+                
                 <button
                   onClick={() => setActiveTool("text")}
-                  className={`p-2 rounded ${activeTool === "text" ? "bg-blue-100 text-blue-600" : "text-gray-600"}`}
+                  className={`p-3 rounded-lg ${
+                    activeTool === "text" ? "bg-blue-100 text-blue-600" : "text-gray-600 hover:bg-gray-200"
+                  }`}
                   title="Text"
                 >
-                  <Type className="h-5 w-5" />
+                  <Type className="w-5 h-5" />
                 </button>
+
                 <button
-                  onClick={() => setActiveTool("image")}
-                  className={`p-2 rounded ${activeTool === "image" ? "bg-blue-100 text-blue-600" : "text-gray-600"}`}
-                  title="Images"
+                  onClick={() => setActiveTool("draw")}
+                  className={`p-3 rounded-lg ${
+                    activeTool === "draw" ? "bg-blue-100 text-blue-600" : "text-gray-600 hover:bg-gray-200"
+                  }`}
+                  title="Draw"
                 >
-                  <ImageIcon className="h-5 w-5" />
+                  <PenTool className="w-5 h-5" />
                 </button>
+
+                <div className="border-t border-gray-300 my-2 w-full"></div>
+
                 <button
-                  onClick={() => setActiveTool("table")}
-                  className={`p-2 rounded ${activeTool === "table" ? "bg-blue-100 text-blue-600" : "text-gray-600"}`}
-                  title="Tables"
+                  onClick={() => setShowSignaturePopup(true)}
+                  className="p-3 text-gray-600 hover:bg-gray-200 rounded-lg"
+                  title="Signature"
                 >
-                  <Table className="h-5 w-5" />
+                  <Move className="w-5 h-5" />
                 </button>
+
+                <button
+                  onClick={() => addElement('rectangle')}
+                  className="p-3 text-gray-600 hover:bg-gray-200 rounded-lg"
+                  title="Rectangle"
+                >
+                  <Square className="w-5 h-5" />
+                </button>
+
+                <button
+                  onClick={() => addElement('circle')}
+                  className="p-3 text-gray-600 hover:bg-gray-200 rounded-lg"
+                  title="Circle"
+                >
+                  <Circle className="w-5 h-5" />
+                </button>
+
+                <button
+                  onClick={() => addElement('line')}
+                  className="p-3 text-gray-600 hover:bg-gray-200 rounded-lg"
+                  title="Line"
+                >
+                  <Minus className="w-5 h-5" />
+                </button>
+
+                <div className="border-t border-gray-300 my-2 w-full"></div>
+
+                <button
+                  onClick={() => document.getElementById('image-upload')?.click()}
+                  className="p-3 text-gray-600 hover:bg-gray-200 rounded-lg"
+                  title="Add Image"
+                >
+                  <ImageIcon className="w-5 h-5" />
+                </button>
+                <input
+                  id="image-upload"
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageUpload}
+                  className="hidden"
+                />
               </div>
 
-              {/* Main Editor */}
-              <div className="flex-1 flex flex-col">
-                {/* Toolbar */}
-                <div className="bg-white border-b p-4 flex items-center justify-between">
-                  <div className="flex items-center space-x-4">
-                    <div className="flex items-center space-x-2">
-                      <button
-                        onClick={() => goToPage(currentPage - 1)}
-                        disabled={currentPage === 1}
-                        className="p-1 rounded hover:bg-gray-100 disabled:opacity-50"
-                      >
-                        <ChevronLeft className="h-5 w-5" />
-                      </button>
-                      <span className="text-sm font-medium">
-                        Page {currentPage} of {totalPages}
-                      </span>
-                      <button
-                        onClick={() => goToPage(currentPage + 1)}
-                        disabled={currentPage === totalPages}
-                        className="p-1 rounded hover:bg-gray-100 disabled:opacity-50"
-                      >
-                        <ChevronRight className="h-5 w-5" />
-                      </button>
-                    </div>
+              {/* Canvas Area */}
+              <div className="flex-1 bg-gray-100 overflow-auto p-8 relative">
+                <div 
+                  ref={containerRef}
+                  className="bg-white shadow-lg mx-auto relative"
+                  style={{
+                    transform: `scale(${scale})`,
+                    transformOrigin: 'center top',
+                  }}
+                >
+                  <div
+                    ref={canvasRef}
+                    className="pdf-canvas relative"
+                    style={{
+                      background: 'white',
+                      boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
+                      cursor: activeTool !== 'select' ? 'crosshair' : 'default'
+                    }}
+                    onClick={handleCanvasClick}
+                  />
+                  <canvas
+                    ref={drawingCanvasRef}
+                    width={pdfStructure.pages[currentPage - 1]?.width || 800}
+                    height={pdfStructure.pages[currentPage - 1]?.height || 600}
+                    onMouseDown={startDrawing}
+                    onMouseMove={draw}
+                    onMouseUp={stopDrawing}
+                    onMouseLeave={stopDrawing}
+                    className="absolute top-0 left-0"
+                  />
+                </div>
+              </div>
 
-                    <div className="flex items-center space-x-2">
-                      <button
-                        onClick={() => setScale(Math.max(0.3, scale - 0.1))}
-                        className="p-1 rounded hover:bg-gray-100"
-                      >
-                        <ZoomOut className="h-5 w-5" />
-                      </button>
-                      <span className="text-sm font-medium">
-                        {Math.round(scale * 100)}%
-                      </span>
-                      <button
-                        onClick={() => setScale(Math.min(2, scale + 0.1))}
-                        className="p-1 rounded hover:bg-gray-100"
-                      >
-                        <ZoomIn className="h-5 w-5" />
-                      </button>
-                    </div>
-                  </div>
-
-                  {selectedElement && (
-                    <div className="text-sm text-gray-600">
-                      Selected: {selectedElement.type} ({selectedElement.id})
-                    </div>
+              {/* Right Sidebar - Add Elements */}
+              <div className="w-80 bg-white border-l border-gray-200 p-4">
+                <h3 className="font-semibold text-gray-700 mb-4">Add Elements</h3>
+                
+                {/* Active Tool Info */}
+                <div className="mb-4 p-3 bg-blue-50 rounded-lg">
+                  <p className="text-sm text-blue-800">
+                    <strong>Active Tool:</strong> {activeTool}
+                  </p>
+                  {activeTool !== 'select' && (
+                    <p className="text-xs text-blue-600 mt-1">
+                      Click on the document to place the {activeTool}
+                    </p>
                   )}
                 </div>
 
-                {/* Canvas */}
-                <div className="flex-1 bg-gray-200 overflow-auto p-4" ref={containerRef}>
-                  <div 
-                    className="bg-white shadow-lg mx-auto"
-                    style={{ 
-                      transform: `scale(${scale})`,
-                      transformOrigin: 'center top',
-                    }}
+                {/* Signature Tool */}
+                <div className="mb-6">
+                  <h4 className="text-sm font-medium text-gray-600 mb-2">Signature</h4>
+                  <button
+                    onClick={() => setShowSignaturePopup(true)}
+                    className="w-full px-4 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 mb-2"
                   >
-                    <div
-                      ref={domCanvasRef}
-                      className="transition-transform duration-200"
+                    Draw Signature
+                  </button>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={signature}
+                      onChange={(e) => setSignature(e.target.value)}
+                      placeholder="Text signature"
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded text-sm"
                     />
+                    <button
+                      onClick={addTextSignature}
+                      className="px-3 py-2 bg-green-600 text-white rounded text-sm hover:bg-green-700"
+                    >
+                      Add
+                    </button>
                   </div>
+                </div>
+
+                {/* Quick Shapes */}
+                <div className="mb-6">
+                  <h4 className="text-sm font-medium text-gray-600 mb-2">Quick Shapes</h4>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={() => addElement('rectangle')}
+                      className="px-3 py-2 border border-gray-300 rounded text-sm hover:bg-gray-50"
+                    >
+                      Rectangle
+                    </button>
+                    <button
+                      onClick={() => addElement('circle')}
+                      className="px-3 py-2 border border-gray-300 rounded text-sm hover:bg-gray-50"
+                    >
+                      Circle
+                    </button>
+                    <button
+                      onClick={() => addElement('line')}
+                      className="px-3 py-2 border border-gray-300 rounded text-sm hover:bg-gray-50"
+                    >
+                      Line
+                    </button>
+                    <button
+                      onClick={() => addElement('text')}
+                      className="px-3 py-2 border border-gray-300 rounded text-sm hover:bg-gray-50"
+                    >
+                      Text Box
+                    </button>
+                  </div>
+                </div>
+
+                {/* Edit Instructions */}
+                <div className="mt-8 p-4 bg-blue-50 rounded-lg">
+                  <h4 className="font-semibold text-blue-800 text-sm mb-2">Editing Tools:</h4>
+                  <ul className="text-xs text-blue-700 space-y-1">
+                    <li>• Click on text to edit</li>
+                    <li>• Click on empty space to add elements</li>
+                    <li>• Drag elements to move them</li>
+                    <li>• Use corners to resize elements</li>
+                    <li>• Double-click text boxes to edit</li>
+                    <li>• Save edits before exporting</li>
+                  </ul>
                 </div>
               </div>
             </div>
           </div>
         )}
-      </main>
+      </div>
     </div>
   );
 };
