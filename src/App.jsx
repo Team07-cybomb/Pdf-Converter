@@ -63,7 +63,7 @@ function AppContent() {
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <Helmet>
-        <title>PDF Pro - The Future of Document Management</title>
+        <title>PDF Works - The Future of Document Management</title>
         <meta
           name="description"
           content="AI-powered PDF editing, conversion, compression, OCR, and e-signature."
