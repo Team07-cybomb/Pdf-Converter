@@ -11,6 +11,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = path.join(__dirname, '../../../node_mod
 class EditController {
   constructor() {
     console.log('EditController initialized');
+    this.configurePDFJS();
     this.uploadPDF = this.uploadPDF.bind(this);
     this.extractPDFStructure = this.extractPDFStructure.bind(this);
     this.getStructure = this.getStructure.bind(this);
@@ -24,6 +25,20 @@ class EditController {
     this.getEdits = this.getEdits.bind(this);
     this.embedCanvasAsPage = this.embedCanvasAsPage.bind(this);
     this.addOriginalPageAsImage = this.addOriginalPageAsImage.bind(this);
+  }
+
+  // Configure PDF.js to suppress font warnings
+  configurePDFJS() {
+    const originalConsoleWarn = console.warn;
+    console.warn = function(...args) {
+      if (typeof args[0] === 'string' && 
+          (args[0].includes('getPathGenerator') || 
+           args[0].includes('fetchStandardFontData') ||
+           args[0].includes('Requesting object that isn\'t resolved yet'))) {
+        return; // Suppress font-related warnings
+      }
+      originalConsoleWarn.apply(console, args);
+    };
   }
 
   // Upload PDF and extract structure
@@ -425,10 +440,10 @@ class EditController {
     }
   }
 
-  // Export to PDF with canvas rendering
+  // Enhanced exportPDF method for canvas-only export
   async exportPDF(req, res) {
     try {
-      const { sessionId, canvasData } = req.body;
+      const { sessionId, canvasData, exportMode } = req.body;
       
       if (!sessionId) {
         return res.status(400).json({
@@ -457,7 +472,7 @@ class EditController {
         });
       }
 
-      console.log(`Exporting ${structure.pages.length} pages with canvas data`);
+      console.log(`Exporting ${structure.pages.length} pages in ${exportMode || 'canvas-only'} mode`);
 
       // Process each page
       for (let pageNum = 1; pageNum <= structure.pages.length; pageNum++) {
@@ -473,20 +488,37 @@ class EditController {
         const pageCanvasData = canvasData && canvasData[pageNum];
         
         if (pageCanvasData && pageCanvasData.dataURL) {
-          // Embed the canvas image as the entire page
+          // Use ONLY the canvas data (no original PDF background)
           await this.embedCanvasAsPage(page, pageCanvasData.dataURL, pageStructure.width, pageStructure.height);
-          console.log(`Page ${pageNum}: Used canvas data`);
+          console.log(`Page ${pageNum}: Used canvas-only data`);
         } else {
-          // Fallback: use original PDF page as image
-          await this.addOriginalPageAsImage(pdfDoc, page, sessionId, pageNum, pageStructure);
-          console.log(`Page ${pageNum}: Used original page as fallback`);
+          // Fallback: white background with message
+          page.drawRectangle({
+            x: 0,
+            y: 0,
+            width: pageStructure.width,
+            height: pageStructure.height,
+            color: rgb(1, 1, 1),
+          });
+          
+          // Add a message indicating no canvas data
+          const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+          page.drawText('No canvas data available for this page', {
+            x: 50,
+            y: pageStructure.height / 2,
+            size: 12,
+            font: font,
+            color: rgb(0.5, 0.5, 0.5),
+          });
+          
+          console.log(`Page ${pageNum}: Used fallback (no canvas data)`);
         }
       }
 
       const pdfBytes = await pdfDoc.save();
       await fs.writeFile(exportFilePath, pdfBytes);
 
-      console.log('PDF exported successfully with canvas rendering');
+      console.log('PDF exported successfully with canvas-only rendering');
       
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', 'attachment; filename=edited-document.pdf');
@@ -538,6 +570,14 @@ class EditController {
       
     } catch (error) {
       console.error('Error embedding canvas as page:', error);
+      // Fallback: white background
+      page.drawRectangle({
+        x: 0,
+        y: 0,
+        width: width,
+        height: height,
+        color: rgb(1, 1, 1),
+      });
     }
   }
 

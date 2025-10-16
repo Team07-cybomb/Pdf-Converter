@@ -12,7 +12,7 @@ import {
   Edit,
   MousePointer,
   Download,
-  RefreshCw,
+  RefreshCcw,
   PenTool,
   Square,
   Circle,
@@ -20,27 +20,34 @@ import {
   Minus,
   X,
   Move,
+  Bold,
+  Italic,
+  Underline,
+  Highlighter,
+  Strikethrough,
+  Search,
+  Replace,
+  Palette,
+  Copy,
+  RotateCcw,
+  RotateCw,
 } from "lucide-react";
 
 const API_BASE_URL = 'http://localhost:5000';
 
+// Import all available fonts from your lib/fonts directory
+const AVAILABLE_FONTS = [
+  'Arial', 'Helvetica', 'Times New Roman', 'Courier New', 
+  'Georgia', 'Verdana', 'Tahoma', 'Trebuchet MS', 'Impact',
+  'Comic Sans MS', 'Lucida Sans', 'Palatino', 'Garamond',
+  'Bookman', 'Avant Garde', 'Brush Script MT', 'Copperplate'
+];
+
 // Font pre-loader component
 const FontPreloader = () => {
-  const [fontsLoaded, setFontsLoaded] = useState(false);
-
   useEffect(() => {
     const loadFonts = async () => {
-      const fontFamilies = [
-        'Arial, sans-serif',
-        'Helvetica, sans-serif',
-        'Times New Roman, serif',
-        'Courier New, monospace',
-        'Georgia, serif',
-        'Verdana, sans-serif'
-      ];
-
-      // Pre-load fonts by creating hidden elements
-      const loadPromises = fontFamilies.map(fontFamily => {
+      const loadPromises = AVAILABLE_FONTS.map(fontFamily => {
         return new Promise((resolve) => {
           const div = document.createElement('div');
           div.innerHTML = 'Font Load Test';
@@ -52,7 +59,6 @@ const FontPreloader = () => {
           div.style.opacity = '0';
           document.body.appendChild(div);
           
-          // Force font rendering
           setTimeout(() => {
             document.body.removeChild(div);
             resolve();
@@ -61,7 +67,6 @@ const FontPreloader = () => {
       });
 
       await Promise.all(loadPromises);
-      setFontsLoaded(true);
     };
 
     loadFonts();
@@ -94,12 +99,33 @@ const PDFEditor = () => {
   const [showSignaturePopup, setShowSignaturePopup] = useState(false);
   const [isDrawingSignature, setIsDrawingSignature] = useState(false);
   const [signaturePaths, setSignaturePaths] = useState([]);
+  
+  // New state variables for enhanced features
+  const [textFormat, setTextFormat] = useState({
+    bold: false,
+    italic: false,
+    underline: false,
+    fontSize: 16,
+    fontFamily: 'Arial',
+    color: '#000000',
+    highlight: 'transparent'
+  });
+  const [showFindReplace, setShowFindReplace] = useState(false);
+  const [findText, setFindText] = useState('');
+  const [replaceText, setReplaceText] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [currentSearchIndex, setCurrentSearchIndex] = useState(-1);
+  const [annotationColor, setAnnotationColor] = useState('#FF0000');
+  const [shapeColor, setShapeColor] = useState('#000000');
+  const [editHistory, setEditHistory] = useState([]);
+  const [historyIndex, setHistoryIndex] = useState(-1);
 
   const fileInputRef = useRef();
   const canvasRef = useRef();
   const containerRef = useRef();
   const drawingCanvasRef = useRef();
   const signatureCanvasRef = useRef();
+  const findInputRef = useRef();
 
   // File upload handler
   const handleFileUpload = async (event) => {
@@ -194,6 +220,44 @@ const PDFEditor = () => {
     }
   };
 
+  // Save current state to history
+  const saveToHistory = () => {
+    const currentState = {
+      edits: {...edits},
+      userElements: {...userElements},
+      timestamp: Date.now()
+    };
+    
+    setEditHistory(prev => {
+      const newHistory = prev.slice(0, historyIndex + 1);
+      newHistory.push(currentState);
+      return newHistory.slice(-50); // Keep last 50 states
+    });
+    setHistoryIndex(prev => prev + 1);
+  };
+
+  // Undo functionality
+  const handleUndo = () => {
+    if (historyIndex > 0) {
+      const previousState = editHistory[historyIndex - 1];
+      setEdits(previousState.edits);
+      setUserElements(previousState.userElements);
+      setHistoryIndex(prev => prev - 1);
+      renderCurrentPage();
+    }
+  };
+
+  // Redo functionality
+  const handleRedo = () => {
+    if (historyIndex < editHistory.length - 1) {
+      const nextState = editHistory[historyIndex + 1];
+      setEdits(nextState.edits);
+      setUserElements(nextState.userElements);
+      setHistoryIndex(prev => prev + 1);
+      renderCurrentPage();
+    }
+  };
+
   // Render current page with all elements
   const renderCurrentPage = () => {
     if (!canvasRef.current || !pdfStructure.pages[currentPage - 1]) return;
@@ -209,7 +273,7 @@ const PDFEditor = () => {
     canvas.style.height = `${pageStructure.height}px`;
     canvas.style.position = 'relative';
     canvas.style.background = 'white';
-    canvas.style.overflow = 'hidden'; // Prevent scrolling
+    canvas.style.overflow = 'hidden';
     canvas.style.boxSizing = 'border-box';
 
     // Add background image
@@ -244,7 +308,7 @@ const PDFEditor = () => {
     initDrawingCanvas();
   };
 
-  // Create editable text overlay
+  // Enhanced text overlay creation with formatting support
   const createTextOverlay = (textElement) => {
     const div = document.createElement('div');
     div.id = textElement.id;
@@ -276,34 +340,121 @@ const PDFEditor = () => {
     div.style.padding = '0';
     div.style.margin = '0';
 
-    const editedContent = edits[textElement.id];
-    div.textContent = editedContent || textElement.content;
+    // Apply text decorations if they exist in edits
+    const elementEdits = edits[textElement.id];
+    if (elementEdits && typeof elementEdits === 'object') {
+      div.textContent = elementEdits.content || textElement.content;
+      if (elementEdits.bold) div.style.fontWeight = 'bold';
+      if (elementEdits.italic) div.style.fontStyle = 'italic';
+      if (elementEdits.underline) div.style.textDecoration = 'underline';
+      if (elementEdits.strikethrough) div.style.textDecoration = 'line-through';
+      if (elementEdits.highlight) div.style.background = elementEdits.highlight;
+      if (elementEdits.color) div.style.color = elementEdits.color;
+      if (elementEdits.fontFamily) div.style.fontFamily = elementEdits.fontFamily;
+      if (elementEdits.fontSize) div.style.fontSize = `${elementEdits.fontSize}px`;
+    } else {
+      div.textContent = elementEdits || textElement.content;
+    }
 
     div.contentEditable = true;
     div.style.outline = 'none';
 
-    div.addEventListener('focus', () => {
+    div.addEventListener('focus', (e) => {
       setSelectedElement(textElement);
       div.style.background = 'rgba(255, 255, 0, 0.2)';
       div.style.border = '1px dashed #666';
+      
+      // Update text format state based on current element
+      updateTextFormatState(textElement, div);
     });
 
     div.addEventListener('blur', () => {
-      saveTextEdit(textElement.id, div.textContent);
+      saveTextEdit(textElement.id, getTextEditData(div));
       div.style.background = 'transparent';
       div.style.border = 'none';
     });
 
     div.addEventListener('input', () => {
-      handleTextEdit(textElement.id, div.textContent);
+      handleTextEdit(textElement.id, getTextEditData(div));
     });
 
     div.addEventListener('click', (e) => {
       e.stopPropagation();
       setSelectedElement(textElement);
+      updateTextFormatState(textElement, div);
     });
 
     return div;
+  };
+
+  // Get comprehensive text edit data
+  const getTextEditData = (element) => {
+    const computedStyle = window.getComputedStyle(element);
+    return {
+      content: element.textContent,
+      bold: computedStyle.fontWeight === 'bold' || computedStyle.fontWeight === '700',
+      italic: computedStyle.fontStyle === 'italic',
+      underline: computedStyle.textDecoration.includes('underline'),
+      strikethrough: computedStyle.textDecoration.includes('line-through'),
+      highlight: computedStyle.backgroundColor,
+      color: computedStyle.color,
+      fontFamily: computedStyle.fontFamily,
+      fontSize: parseInt(computedStyle.fontSize)
+    };
+  };
+
+  // Update text format state based on selected element
+  const updateTextFormatState = (textElement, element) => {
+    const computedStyle = window.getComputedStyle(element);
+    setTextFormat({
+      bold: computedStyle.fontWeight === 'bold' || computedStyle.fontWeight === '700',
+      italic: computedStyle.fontStyle === 'italic',
+      underline: computedStyle.textDecoration.includes('underline'),
+      fontSize: parseInt(computedStyle.fontSize),
+      fontFamily: computedStyle.fontFamily.split(',')[0].replace(/['"]/g, ''),
+      color: computedStyle.color,
+      highlight: computedStyle.backgroundColor !== 'rgba(0, 0, 0, 0)' ? computedStyle.backgroundColor : 'transparent'
+    });
+  };
+
+  // Apply text formatting to selected element
+  const applyTextFormatting = (format) => {
+    if (!selectedElement) return;
+
+    const element = document.getElementById(selectedElement.id);
+    if (!element) return;
+
+    Object.keys(format).forEach(key => {
+      switch (key) {
+        case 'bold':
+          element.style.fontWeight = format.bold ? 'bold' : 'normal';
+          break;
+        case 'italic':
+          element.style.fontStyle = format.italic ? 'italic' : 'normal';
+          break;
+        case 'underline':
+          element.style.textDecoration = format.underline ? 'underline' : 'none';
+          break;
+        case 'fontSize':
+          element.style.fontSize = `${format.fontSize}px`;
+          break;
+        case 'fontFamily':
+          element.style.fontFamily = format.fontFamily;
+          break;
+        case 'color':
+          element.style.color = format.color;
+          break;
+        case 'highlight':
+          element.style.background = format.highlight;
+          break;
+      }
+    });
+
+    // Update text format state
+    setTextFormat(prev => ({ ...prev, ...format }));
+    
+    // Save the changes
+    handleTextEdit(selectedElement.id, getTextEditData(element));
   };
 
   // Create user-added elements (shapes, images, signatures)
@@ -325,22 +476,22 @@ const PDFEditor = () => {
       case 'rectangle':
         div.style.width = `${element.width}px`;
         div.style.height = `${element.height}px`;
-        div.style.border = '2px solid #000';
-        div.style.background = 'transparent';
+        div.style.border = `2px solid ${element.color || shapeColor}`;
+        div.style.background = element.fill || 'transparent';
         break;
       
       case 'circle':
         div.style.width = `${element.width}px`;
         div.style.height = `${element.width}px`;
-        div.style.border = '2px solid #000';
+        div.style.border = `2px solid ${element.color || shapeColor}`;
         div.style.borderRadius = '50%';
-        div.style.background = 'transparent';
+        div.style.background = element.fill || 'transparent';
         break;
       
       case 'line':
         div.style.width = `${element.width}px`;
         div.style.height = '2px';
-        div.style.background = '#000';
+        div.style.background = element.color || shapeColor;
         div.style.transform = `rotate(${element.rotation || 0}deg)`;
         break;
       
@@ -367,13 +518,42 @@ const PDFEditor = () => {
       case 'text':
         div.style.fontSize = `${element.fontSize || 16}px`;
         div.style.color = element.color || '#000';
-        div.style.background = 'transparent';
+        div.style.background = element.highlight || 'transparent';
         div.style.padding = '4px';
         div.style.border = '1px dashed #ccc';
         div.style.minWidth = '50px';
         div.style.minHeight = '20px';
         div.style.fontFamily = element.fontFamily || 'Arial, sans-serif';
+        div.style.fontWeight = element.bold ? 'bold' : 'normal';
+        div.style.fontStyle = element.italic ? 'italic' : 'normal';
+        div.style.textDecoration = element.underline ? 'underline' : 'none';
         div.textContent = element.text || 'Click to edit';
+        break;
+
+      case 'highlight':
+        div.style.width = `${element.width}px`;
+        div.style.height = `${element.height}px`;
+        div.style.background = element.color || 'rgba(255, 255, 0, 0.3)';
+        div.style.pointerEvents = 'none';
+        div.style.zIndex = '5';
+        break;
+
+      case 'strikeout':
+        div.style.width = `${element.width}px`;
+        div.style.height = '2px';
+        div.style.background = element.color || '#ff0000';
+        div.style.top = `${element.y + (element.height / 2)}px`;
+        div.style.pointerEvents = 'none';
+        div.style.zIndex = '5';
+        break;
+
+      case 'underline':
+        div.style.width = `${element.width}px`;
+        div.style.height = '2px';
+        div.style.background = element.color || '#0000ff';
+        div.style.top = `${element.y + element.height - 2}px`;
+        div.style.pointerEvents = 'none';
+        div.style.zIndex = '5';
         break;
     }
 
@@ -425,12 +605,12 @@ const PDFEditor = () => {
     drawingCanvas.style.width = '100%';
     drawingCanvas.style.height = '100%';
     drawingCanvas.style.zIndex = '20';
-    drawingCanvas.style.pointerEvents = activeTool === 'draw' ? 'auto' : 'none';
-    drawingCanvas.style.cursor = activeTool === 'draw' ? 'crosshair' : 'default';
+    drawingCanvas.style.pointerEvents = ['draw', 'highlight', 'strikeout', 'underline'].includes(activeTool) ? 'auto' : 'none';
+    drawingCanvas.style.cursor = ['draw', 'highlight', 'strikeout', 'underline'].includes(activeTool) ? 'crosshair' : 'default';
 
     const ctx = drawingCanvas.getContext('2d');
-    ctx.strokeStyle = '#000000';
-    ctx.lineWidth = 2;
+    ctx.strokeStyle = annotationColor;
+    ctx.lineWidth = activeTool === 'draw' ? 2 : 3;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
   };
@@ -484,6 +664,7 @@ const PDFEditor = () => {
     const handleMouseUp = () => {
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
+      saveToHistory();
     };
 
     document.addEventListener('mousemove', handleMouseMove);
@@ -532,6 +713,7 @@ const PDFEditor = () => {
     const handleMouseUp = () => {
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
+      saveToHistory();
     };
 
     document.addEventListener('mousemove', handleMouseMove);
@@ -572,6 +754,7 @@ const PDFEditor = () => {
       );
       return newElements;
     });
+    saveToHistory();
   };
 
   // Handle canvas click for adding elements at click position
@@ -594,34 +777,65 @@ const PDFEditor = () => {
       case 'text':
         addElementAtPosition('text', x, y, {
           text: 'New Text',
-          fontSize: 16,
+          fontSize: textFormat.fontSize,
           width: 100,
           height: 30,
-          fontFamily: 'Arial, sans-serif'
+          fontFamily: textFormat.fontFamily,
+          color: textFormat.color,
+          bold: textFormat.bold,
+          italic: textFormat.italic,
+          underline: textFormat.underline
         });
         break;
       case 'rectangle':
         addElementAtPosition('rectangle', x, y, {
           width: 150,
-          height: 100
+          height: 100,
+          color: shapeColor
         });
         break;
       case 'circle':
         addElementAtPosition('circle', x, y, {
           width: 100,
-          height: 100
+          height: 100,
+          color: shapeColor
         });
         break;
       case 'line':
         addElementAtPosition('line', x, y, {
           width: 150,
-          height: 2
+          height: 2,
+          color: shapeColor
+        });
+        break;
+      case 'highlight':
+        addElementAtPosition('highlight', x, y, {
+          width: 100,
+          height: 20,
+          color: annotationColor
+        });
+        break;
+      case 'strikeout':
+        addElementAtPosition('strikeout', x, y, {
+          width: 100,
+          height: 2,
+          color: annotationColor
+        });
+        break;
+      case 'underline':
+        addElementAtPosition('underline', x, y, {
+          width: 100,
+          height: 2,
+          color: annotationColor
         });
         break;
     }
 
-    // Reset to select tool after placing element
-    setActiveTool('select');
+    // Reset to select tool after placing element (except for drawing tools)
+    if (!['draw', 'highlight', 'strikeout', 'underline'].includes(activeTool)) {
+      setActiveTool('select');
+    }
+    saveToHistory();
   };
 
   // Add element at specific position
@@ -629,7 +843,7 @@ const PDFEditor = () => {
     const newElement = {
       id: `${type}-${Date.now()}`,
       type,
-      x: x - (options.width || 100) / 2, // Center the element
+      x: x - (options.width || 100) / 2,
       y: y - (options.height || 100) / 2,
       width: options.width || 100,
       height: options.height || 100,
@@ -686,23 +900,144 @@ const PDFEditor = () => {
     setActiveTool(type);
   };
 
-  // Enhanced canvas capture with better font handling
+  // Find and replace functionality
+  const handleFind = () => {
+    if (!findText.trim()) return;
+
+    const results = [];
+    const textElements = document.querySelectorAll('.text-overlay.editable');
+    
+    textElements.forEach(element => {
+      const text = element.textContent || '';
+      if (text.toLowerCase().includes(findText.toLowerCase())) {
+        results.push({
+          element,
+          text: text
+        });
+      }
+    });
+
+    setSearchResults(results);
+    setCurrentSearchIndex(0);
+    
+    if (results.length > 0) {
+      highlightSearchResult(results[0].element);
+    }
+  };
+
+  const handleReplace = () => {
+    if (searchResults.length === 0 || currentSearchIndex === -1) return;
+
+    const currentResult = searchResults[currentSearchIndex];
+    const element = currentResult.element;
+    
+    // Replace text
+    const newText = (element.textContent || '').replace(
+      new RegExp(findText, 'gi'), 
+      replaceText
+    );
+    
+    element.textContent = newText;
+    
+    // Save the edit
+    const elementId = element.id;
+    handleTextEdit(elementId, getTextEditData(element));
+    
+    // Move to next result
+    handleNextResult();
+  };
+
+  const handleReplaceAll = () => {
+    if (searchResults.length === 0) return;
+
+    searchResults.forEach(result => {
+      const element = result.element;
+      const newText = (element.textContent || '').replace(
+        new RegExp(findText, 'gi'), 
+        replaceText
+      );
+      
+      element.textContent = newText;
+      
+      // Save the edit
+      const elementId = element.id;
+      handleTextEdit(elementId, getTextEditData(element));
+    });
+
+    setSearchResults([]);
+    setCurrentSearchIndex(-1);
+  };
+
+  const handleNextResult = () => {
+    if (searchResults.length === 0) return;
+    
+    const nextIndex = (currentSearchIndex + 1) % searchResults.length;
+    setCurrentSearchIndex(nextIndex);
+    highlightSearchResult(searchResults[nextIndex].element);
+  };
+
+  const handlePreviousResult = () => {
+    if (searchResults.length === 0) return;
+    
+    const prevIndex = (currentSearchIndex - 1 + searchResults.length) % searchResults.length;
+    setCurrentSearchIndex(prevIndex);
+    highlightSearchResult(searchResults[prevIndex].element);
+  };
+
+  const highlightSearchResult = (element) => {
+    // Remove previous highlights
+    document.querySelectorAll('.search-highlight').forEach(el => {
+      el.classList.remove('search-highlight');
+      el.style.background = '';
+    });
+    
+    // Highlight current result
+    element.classList.add('search-highlight');
+    element.style.background = 'rgba(255, 255, 0, 0.5)';
+    element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  };
+
+  // Duplicate selected element
+  const duplicateElement = () => {
+    if (!selectedElement) return;
+
+    const newElement = {
+      ...selectedElement,
+      id: `${selectedElement.type}-${Date.now()}`,
+      x: selectedElement.x + 20,
+      y: selectedElement.y + 20
+    };
+
+    setUserElements(prev => ({
+      ...prev,
+      [currentPage]: [...(prev[currentPage] || []), newElement]
+    }));
+
+    setSelectedElement(newElement);
+    saveToHistory();
+    
+    setTimeout(() => {
+      renderCurrentPage();
+    }, 0);
+  };
+
+  // Enhanced canvas capture with DOM rendering
   const captureAllPagesAsCanvas = async () => {
     const canvasData = {};
     const originalPage = currentPage;
     
-    // Create a temporary canvas for rendering
+    // Create a temporary canvas for high-quality rendering
     const tempCanvas = document.createElement('canvas');
     const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
     
-    // Set higher DPI for better quality
-    const scaleFactor = 2; // 2x resolution for better text quality
+    // High DPI for better quality
+    const scaleFactor = 2;
     
     for (let pageNum = 1; pageNum <= totalPages; pageNum++) {
       setCurrentPage(pageNum);
       
-      // Wait for page to render
-      await new Promise(resolve => setTimeout(resolve, 200));
+      // Wait for page to render completely
+      await new Promise(resolve => setTimeout(resolve, 300));
       
       const canvasContainer = canvasRef.current;
       if (!canvasContainer) continue;
@@ -714,7 +1049,7 @@ const PDFEditor = () => {
       tempCanvas.width = pageStructure.width * scaleFactor;
       tempCanvas.height = pageStructure.height * scaleFactor;
       
-      // Clear and set white background
+      // Clear with white background
       tempCtx.fillStyle = 'white';
       tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
       
@@ -722,75 +1057,52 @@ const PDFEditor = () => {
       tempCtx.save();
       tempCtx.scale(scaleFactor, scaleFactor);
       
-      // Capture with enhanced font handling
-      await capturePageElements(tempCtx, canvasContainer, pageStructure, scaleFactor);
+      try {
+        // Capture the entire canvas DOM including all edits
+        await captureCanvasDOM(tempCtx, canvasContainer, pageStructure);
+      } catch (error) {
+        console.error(`Error capturing page ${pageNum}:`, error);
+        // Fallback: draw white page
+        tempCtx.fillStyle = 'white';
+        tempCtx.fillRect(0, 0, pageStructure.width, pageStructure.height);
+      }
       
       tempCtx.restore();
       
       // Store as high-quality PNG
       canvasData[pageNum] = {
-        dataURL: tempCanvas.toDataURL('image/png', 0.9),
+        dataURL: tempCanvas.toDataURL('image/png', 1.0), // Maximum quality
         width: pageStructure.width,
         height: pageStructure.height
       };
       
-      console.log(`Captured page ${pageNum} at ${scaleFactor}x resolution`);
+      console.log(`Captured page ${pageNum} with canvas DOM`);
     }
     
     setCurrentPage(originalPage);
     return canvasData;
   };
 
-  // Enhanced element capture with font preservation
-  const capturePageElements = async (ctx, container, pageStructure, scaleFactor = 1) => {
-    // Draw background image first
-    await drawBackgroundImage(ctx, pageStructure, scaleFactor);
+  // Capture canvas DOM including all edits
+  const captureCanvasDOM = async (ctx, container, pageStructure) => {
+    // Get all elements in the container
+    const elements = Array.from(container.children);
     
-    // Draw all DOM elements in correct order
-    await drawAllDOMElements(ctx, container, scaleFactor);
-  };
-
-  // Draw background with high quality
-  const drawBackgroundImage = async (ctx, pageStructure, scaleFactor) => {
-    return new Promise((resolve) => {
-      const bgImg = new Image();
-      bgImg.crossOrigin = 'anonymous';
-      bgImg.onload = () => {
-        // Draw background at high quality
-        ctx.drawImage(bgImg, 0, 0, pageStructure.width, pageStructure.height);
-        resolve();
-      };
-      bgImg.onerror = () => {
-        console.log('Background image failed to load, using white background');
-        ctx.fillStyle = 'white';
-        ctx.fillRect(0, 0, pageStructure.width, pageStructure.height);
-        resolve();
-      };
-      bgImg.src = `${API_BASE_URL}${pageStructure.backgroundImage}?t=${Date.now()}`;
+    // Sort by z-index to render in correct order
+    elements.sort((a, b) => {
+      const aZ = parseInt(window.getComputedStyle(a).zIndex) || 0;
+      const bZ = parseInt(window.getComputedStyle(b).zIndex) || 0;
+      return aZ - bZ;
     });
-  };
-
-  // Draw all DOM elements with proper styling
-  const drawAllDOMElements = async (ctx, container, scaleFactor) => {
-    // Get all elements in the correct z-order
-    const allElements = Array.from(container.querySelectorAll('*'))
-      .filter(el => {
-        const style = window.getComputedStyle(el);
-        return style.display !== 'none' && style.visibility !== 'hidden';
-      })
-      .sort((a, b) => {
-        const aZ = parseInt(window.getComputedStyle(a).zIndex) || 0;
-        const bZ = parseInt(window.getComputedStyle(b).zIndex) || 0;
-        return aZ - bZ;
-      });
-
-    for (const element of allElements) {
-      await drawElementToCanvas(ctx, element, container, scaleFactor);
+    
+    // Render each element
+    for (const element of elements) {
+      await renderElementToCanvas(ctx, element, container);
     }
   };
 
-  // Enhanced element drawing with font support
-  const drawElementToCanvas = async (ctx, element, container, scaleFactor) => {
+  // Render individual element to canvas
+  const renderElementToCanvas = async (ctx, element, container) => {
     const rect = element.getBoundingClientRect();
     const containerRect = container.getBoundingClientRect();
     
@@ -798,106 +1110,114 @@ const PDFEditor = () => {
     const y = rect.top - containerRect.top;
     const width = rect.width;
     const height = rect.height;
-
-    // Skip if element is not visible or has no size
+    
     if (width === 0 || height === 0) return;
-
+    
     ctx.save();
-
+    
     try {
       const computedStyle = window.getComputedStyle(element);
       
       // Handle different element types
       if (element.classList.contains('text-overlay')) {
-        await drawTextElement(ctx, element, x, y, width, height, computedStyle);
+        await renderTextElement(ctx, element, x, y, width, height, computedStyle);
       } 
       else if (element.classList.contains('user-element')) {
-        await drawUserElementToCanvas(ctx, element, x, y, width, height, computedStyle);
+        await renderUserElement(ctx, element, x, y, width, height, computedStyle);
       }
-      // Add other element types as needed
+      else if (element.tagName === 'IMG') {
+        // Handle background images
+        await renderImageElement(ctx, element, x, y, width, height);
+      }
       
     } catch (error) {
-      console.error('Error drawing element:', error);
+      console.error('Error rendering element:', error, element);
     }
-
+    
     ctx.restore();
   };
 
-  // Enhanced text drawing with font fallbacks
-  const drawTextElement = async (ctx, element, x, y, width, height, computedStyle) => {
-    const textContent = element.textContent || '';
+  // Render text elements with enhanced font handling
+  const renderTextElement = async (ctx, element, x, y, width, height, computedStyle) => {
+    let textContent = element.textContent || '';
     if (!textContent.trim()) return;
 
     // Set up text styling
-    ctx.font = getCanvasFontString(computedStyle);
+    ctx.font = getCanvasFont(computedStyle);
     ctx.fillStyle = computedStyle.color || '#000000';
     ctx.textAlign = getCanvasTextAlign(computedStyle.textAlign);
     ctx.textBaseline = 'top';
     
-    // Handle line breaks
+    // Handle text transformations
+    if (computedStyle.textTransform === 'uppercase') {
+      textContent = textContent.toUpperCase();
+    } else if (computedStyle.textTransform === 'lowercase') {
+      textContent = textContent.toLowerCase();
+    } else if (computedStyle.textTransform === 'capitalize') {
+      textContent = textContent.replace(/\b\w/g, l => l.toUpperCase());
+    }
+    
+    // Handle line breaks and text wrapping
     const lines = textContent.split('\n');
     const lineHeight = parseInt(computedStyle.lineHeight) || parseInt(computedStyle.fontSize);
     const fontSize = parseInt(computedStyle.fontSize);
     
+    // Apply background if any
+    if (computedStyle.backgroundColor && computedStyle.backgroundColor !== 'rgba(0, 0, 0, 0)') {
+      ctx.fillStyle = computedStyle.backgroundColor;
+      ctx.fillRect(x, y, width, height);
+      ctx.fillStyle = computedStyle.color || '#000000';
+    }
+    
     // Draw each line
     lines.forEach((line, index) => {
       if (line.trim()) {
-        ctx.fillText(line, x, y + (index * lineHeight));
+        // Basic text wrapping (simplified)
+        const words = line.split(' ');
+        let currentLine = '';
+        let lineY = y + (index * lineHeight);
+        
+        for (let i = 0; i < words.length; i++) {
+          const testLine = currentLine + words[i] + ' ';
+          const metrics = ctx.measureText(testLine);
+          
+          if (metrics.width > width && i > 0) {
+            // Draw current line and start new one
+            ctx.fillText(currentLine, x, lineY);
+            currentLine = words[i] + ' ';
+            lineY += lineHeight;
+          } else {
+            currentLine = testLine;
+          }
+        }
+        
+        // Draw remaining text
+        if (currentLine) {
+          ctx.fillText(currentLine.trim(), x, lineY);
+        }
       }
     });
   };
 
-  // Convert CSS font to canvas font string
-  const getCanvasFontString = (computedStyle) => {
-    const fontWeight = computedStyle.fontWeight || 'normal';
-    const fontSize = computedStyle.fontSize || '16px';
-    const fontFamily = computedStyle.fontFamily || 'Arial, sans-serif';
-    
-    // Map CSS font weights to canvas-friendly weights
-    const weightMap = {
-      'bold': 'bold',
-      'bolder': 'bold',
-      'lighter': 'lighter',
-      '100': '100',
-      '200': '200',
-      '300': '300',
-      '400': 'normal',
-      '500': '500',
-      '600': '600',
-      '700': 'bold',
-      '800': '800',
-      '900': '900'
-    };
-    
-    const canvasWeight = weightMap[fontWeight] || 'normal';
-    const canvasStyle = computedStyle.fontStyle || 'normal';
-    
-    return `${canvasStyle} ${canvasWeight} ${fontSize} ${fontFamily}`;
-  };
-
-  // Convert CSS text-align to canvas textAlign
-  const getCanvasTextAlign = (cssTextAlign) => {
-    const alignMap = {
-      'left': 'left',
-      'right': 'right',
-      'center': 'center',
-      'justify': 'left' // canvas doesn't support justify
-    };
-    return alignMap[cssTextAlign] || 'left';
-  };
-
-  // Enhanced user element drawing
-  const drawUserElementToCanvas = async (ctx, element, x, y, width, height, computedStyle) => {
+  // Render user-added elements
+  const renderUserElement = async (ctx, element, x, y, width, height, computedStyle) => {
     const type = element.getAttribute('data-type');
     
     switch (type) {
       case 'text':
-        // Draw user text elements
         const textContent = element.textContent || 'Text';
-        ctx.font = getCanvasFontString(computedStyle);
+        ctx.font = getCanvasFont(computedStyle);
         ctx.fillStyle = computedStyle.color || '#000000';
         ctx.textAlign = 'left';
         ctx.textBaseline = 'top';
+        
+        // Apply background
+        if (computedStyle.backgroundColor && computedStyle.backgroundColor !== 'rgba(0, 0, 0, 0)') {
+          ctx.fillStyle = computedStyle.backgroundColor;
+          ctx.fillRect(x, y, width, height);
+          ctx.fillStyle = computedStyle.color || '#000000';
+        }
+        
         ctx.fillText(textContent, x, y);
         break;
         
@@ -905,6 +1225,11 @@ const PDFEditor = () => {
         ctx.strokeStyle = computedStyle.borderColor || '#000000';
         ctx.lineWidth = parseInt(computedStyle.borderWidth) || 2;
         ctx.strokeRect(x, y, width, height);
+        
+        if (computedStyle.backgroundColor && computedStyle.backgroundColor !== 'rgba(0, 0, 0, 0)') {
+          ctx.fillStyle = computedStyle.backgroundColor;
+          ctx.fillRect(x, y, width, height);
+        }
         break;
         
       case 'circle':
@@ -913,6 +1238,11 @@ const PDFEditor = () => {
         ctx.beginPath();
         ctx.arc(x + width/2, y + height/2, Math.min(width, height)/2, 0, 2 * Math.PI);
         ctx.stroke();
+        
+        if (computedStyle.backgroundColor && computedStyle.backgroundColor !== 'rgba(0, 0, 0, 0)') {
+          ctx.fillStyle = computedStyle.backgroundColor;
+          ctx.fill();
+        }
         break;
         
       case 'line':
@@ -924,16 +1254,60 @@ const PDFEditor = () => {
         ctx.stroke();
         break;
         
+      case 'highlight':
+      case 'strikeout':
+      case 'underline':
+        ctx.fillStyle = computedStyle.backgroundColor || 'rgba(255, 255, 0, 0.3)';
+        ctx.fillRect(x, y, width, height);
+        break;
+        
       case 'signature':
       case 'image':
         // Handle images and signatures
-        await drawElementBackgroundImage(ctx, element, x, y, width, height);
+        await renderElementImage(ctx, element, x, y, width, height);
         break;
     }
   };
 
-  // Draw background images for elements
-  const drawElementBackgroundImage = (ctx, element, x, y, width, height) => {
+  // Helper function to get canvas font string
+  const getCanvasFont = (computedStyle) => {
+    const fontWeight = computedStyle.fontWeight || 'normal';
+    const fontSize = computedStyle.fontSize || '16px';
+    const fontFamily = computedStyle.fontFamily || 'Arial, sans-serif';
+    
+    return `${computedStyle.fontStyle || 'normal'} ${fontWeight} ${fontSize} ${fontFamily}`;
+  };
+
+  // Helper function to get canvas text alignment
+  const getCanvasTextAlign = (cssTextAlign) => {
+    const alignMap = {
+      'left': 'left',
+      'right': 'right',
+      'center': 'center',
+      'justify': 'left'
+    };
+    return alignMap[cssTextAlign] || 'left';
+  };
+
+  // Render image elements
+  const renderImageElement = (ctx, element, x, y, width, height) => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        ctx.drawImage(img, x, y, width, height);
+        resolve();
+      };
+      img.onerror = () => {
+        console.log('Image failed to load');
+        resolve();
+      };
+      img.src = element.src;
+    });
+  };
+
+  // Render element background images
+  const renderElementImage = (ctx, element, x, y, width, height) => {
     return new Promise((resolve) => {
       const bgImage = window.getComputedStyle(element).backgroundImage;
       if (bgImage && bgImage !== 'none') {
@@ -948,7 +1322,6 @@ const PDFEditor = () => {
           resolve();
         };
         
-        // Extract URL from background-image property
         const urlMatch = bgImage.match(/url\(["']?(.*?)["']?\)/);
         if (urlMatch) {
           img.src = urlMatch[1];
@@ -961,15 +1334,19 @@ const PDFEditor = () => {
     });
   };
 
-  // Enhanced export with canvas capture
+  // Enhanced export with canvas-only rendering
   const handleExport = async () => {
     try {
       setIsProcessing(true);
       
-      // First capture all canvas data for each page
+      console.log('Starting canvas-only export...');
+      
+      // Capture all pages as canvas data
       const canvasData = await captureAllPagesAsCanvas();
       
-      // Then export with canvas data
+      console.log('Canvas data captured, sending to server...');
+      
+      // Export with canvas data only (no original PDF merging)
       const response = await fetch(`${API_BASE_URL}/api/tools/pdf-editor/export`, {
         method: 'POST',
         headers: {
@@ -977,7 +1354,8 @@ const PDFEditor = () => {
         },
         body: JSON.stringify({
           sessionId,
-          canvasData // Send canvas renders for each page
+          canvasData,
+          exportMode: 'canvas-only' // Tell backend to use canvas only
         })
       });
 
@@ -996,7 +1374,7 @@ const PDFEditor = () => {
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
 
-      alert('PDF exported successfully!');
+      alert('PDF exported successfully with canvas edits only!');
 
     } catch (error) {
       console.error('Export error:', error);
@@ -1017,8 +1395,10 @@ const PDFEditor = () => {
       
       textOverlays.forEach(overlay => {
         const elementId = overlay.id;
-        const currentContent = overlay.textContent || '';
-        if (elementId && currentContent !== overlay.getAttribute('data-original')) {
+        const currentContent = getTextEditData(overlay);
+        const originalContent = overlay.getAttribute('data-original');
+        
+        if (elementId && JSON.stringify(currentContent) !== JSON.stringify({ content: originalContent })) {
           currentEdits[elementId] = currentContent;
         }
       });
@@ -1117,7 +1497,6 @@ const PDFEditor = () => {
     const canvas = signatureCanvasRef.current;
     const dataURL = canvas.toDataURL();
     
-    // Add signature at a default position (user can drag it later)
     addElementAtPosition('signature', 200, 150, {
       src: dataURL,
       width: 200,
@@ -1126,6 +1505,7 @@ const PDFEditor = () => {
     
     setShowSignaturePopup(false);
     clearSignature();
+    saveToHistory();
   };
 
   // Add signature from text
@@ -1143,6 +1523,7 @@ const PDFEditor = () => {
       height: 30
     });
     setSignature("");
+    saveToHistory();
   };
 
   // Add image
@@ -1157,13 +1538,14 @@ const PDFEditor = () => {
         width: 150,
         height: 150
       });
+      saveToHistory();
     };
     reader.readAsDataURL(file);
   };
 
   // Drawing functions
   const startDrawing = (e) => {
-    if (activeTool !== 'draw') return;
+    if (!['draw', 'highlight', 'strikeout', 'underline'].includes(activeTool)) return;
 
     const canvas = drawingCanvasRef.current;
     const rect = canvas.getBoundingClientRect();
@@ -1176,10 +1558,19 @@ const PDFEditor = () => {
     const ctx = canvas.getContext('2d');
     ctx.beginPath();
     ctx.moveTo(x, y);
+    ctx.strokeStyle = annotationColor;
+    
+    if (activeTool === 'highlight') {
+      ctx.globalAlpha = 0.3;
+      ctx.lineWidth = 20;
+    } else {
+      ctx.globalAlpha = 1.0;
+      ctx.lineWidth = activeTool === 'draw' ? 2 : 3;
+    }
   };
 
   const draw = (e) => {
-    if (!isDrawing || activeTool !== 'draw') return;
+    if (!isDrawing || !['draw', 'highlight', 'strikeout', 'underline'].includes(activeTool)) return;
 
     const canvas = drawingCanvasRef.current;
     const rect = canvas.getBoundingClientRect();
@@ -1198,7 +1589,7 @@ const PDFEditor = () => {
 
     setIsDrawing(false);
     
-    // Save drawing as image element
+    // Save drawing as permanent element
     if (currentPath.length > 1) {
       const canvas = drawingCanvasRef.current;
       const dataURL = canvas.toDataURL();
@@ -1212,7 +1603,10 @@ const PDFEditor = () => {
       // Clear drawing canvas
       const ctx = canvas.getContext('2d');
       ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.globalAlpha = 1.0;
     }
+    
+    saveToHistory();
   };
 
   // Reset editor
@@ -1225,6 +1619,8 @@ const PDFEditor = () => {
     setSelectedElement(null);
     setEdits({});
     setUserElements({});
+    setEditHistory([]);
+    setHistoryIndex(-1);
     
     if (canvasRef.current) {
       canvasRef.current.innerHTML = '';
@@ -1262,14 +1658,21 @@ const PDFEditor = () => {
   // Update drawing canvas when tool changes
   useEffect(() => {
     if (drawingCanvasRef.current) {
-      drawingCanvasRef.current.style.pointerEvents = activeTool === 'draw' ? 'auto' : 'none';
-      drawingCanvasRef.current.style.cursor = activeTool === 'draw' ? 'crosshair' : 'default';
+      drawingCanvasRef.current.style.pointerEvents = ['draw', 'highlight', 'strikeout', 'underline'].includes(activeTool) ? 'auto' : 'none';
+      drawingCanvasRef.current.style.cursor = ['draw', 'highlight', 'strikeout', 'underline'].includes(activeTool) ? 'crosshair' : 'default';
+      initDrawingCanvas();
     }
-  }, [activeTool]);
+  }, [activeTool, annotationColor]);
+
+  // Focus find input when find/replace dialog opens
+  useEffect(() => {
+    if (showFindReplace && findInputRef.current) {
+      findInputRef.current.focus();
+    }
+  }, [showFindReplace]);
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Add font preloader */}
       <FontPreloader />
       
       {/* Header */}
@@ -1292,6 +1695,100 @@ const PDFEditor = () => {
           </div>
         </div>
       </div>
+
+      {/* Find & Replace Popup */}
+      {showFindReplace && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-96">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold">Find & Replace</h3>
+              <button
+                onClick={() => setShowFindReplace(false)}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Find
+                </label>
+                <input
+                  ref={findInputRef}
+                  type="text"
+                  value={findText}
+                  onChange={(e) => setFindText(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                  placeholder="Enter text to find"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Replace With
+                </label>
+                <input
+                  type="text"
+                  value={replaceText}
+                  onChange={(e) => setReplaceText(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                  placeholder="Enter replacement text"
+                />
+              </div>
+              
+              <div className="flex justify-between items-center text-sm text-gray-600">
+                <span>
+                  {searchResults.length > 0 
+                    ? `${currentSearchIndex + 1} of ${searchResults.length} results`
+                    : 'No results found'
+                  }
+                </span>
+                <div className="flex gap-2">
+                  <button
+                    onClick={handlePreviousResult}
+                    disabled={searchResults.length === 0}
+                    className="px-3 py-1 bg-gray-200 rounded disabled:opacity-50"
+                  >
+                    Previous
+                  </button>
+                  <button
+                    onClick={handleNextResult}
+                    disabled={searchResults.length === 0}
+                    className="px-3 py-1 bg-gray-200 rounded disabled:opacity-50"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+              
+              <div className="flex gap-2 pt-4 border-t border-gray-200">
+                <button
+                  onClick={handleFind}
+                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                >
+                  Find
+                </button>
+                <button
+                  onClick={handleReplace}
+                  disabled={searchResults.length === 0}
+                  className="flex-1 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50"
+                >
+                  Replace
+                </button>
+                <button
+                  onClick={handleReplaceAll}
+                  disabled={searchResults.length === 0}
+                  className="flex-1 px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50"
+                >
+                  Replace All
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Signature Popup */}
       {showSignaturePopup && (
@@ -1388,7 +1885,7 @@ const PDFEditor = () => {
 
         {status === "processing" && (
           <div className="flex flex-col items-center justify-center p-8 border-2 border-dashed border-gray-300 rounded-lg bg-gray-50">
-            <RefreshCw className="w-16 h-16 text-blue-600 mb-4 animate-spin" />
+            <RefreshCcw className="w-16 h-16 text-blue-600 mb-4 animate-spin" />
             <h2 className="text-xl font-semibold text-gray-700 mb-2">
               Processing PDF...
             </h2>
@@ -1407,7 +1904,7 @@ const PDFEditor = () => {
 
         {status === "editor" && (
           <div className="flex flex-col h-[calc(100vh-200px)]">
-            {/* Top Toolbar */}
+            {/* Enhanced Top Toolbar */}
             <div className="flex items-center justify-between p-4 bg-white border-b border-gray-200">
               <div className="flex items-center gap-4">
                 <button
@@ -1437,6 +1934,35 @@ const PDFEditor = () => {
                     <ChevronRight className="w-4 h-4" />
                   </button>
                 </div>
+
+                {/* Undo/Redo */}
+                <div className="flex items-center gap-1 border-l border-gray-300 pl-4">
+                  <button
+                    onClick={handleUndo}
+                    disabled={historyIndex <= 0}
+                    className="p-2 text-gray-600 hover:bg-gray-100 rounded disabled:opacity-50"
+                    title="Undo"
+                  >
+                    <RotateCcw className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={handleRedo}
+                    disabled={historyIndex >= editHistory.length - 1}
+                    className="p-2 text-gray-600 hover:bg-gray-100 rounded disabled:opacity-50"
+                    title="Redo"
+                  >
+                    <RotateCw className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* Find & Replace */}
+                <button
+                  onClick={() => setShowFindReplace(true)}
+                  className="flex items-center gap-2 px-3 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <Search className="w-4 h-4" />
+                  Find & Replace
+                </button>
               </div>
 
               <div className="flex items-center gap-4">
@@ -1475,6 +2001,90 @@ const PDFEditor = () => {
               </div>
             </div>
 
+            {/* Text Formatting Toolbar */}
+            {selectedElement && selectedElement.type === 'text' && (
+              <div className="flex items-center gap-4 p-3 bg-white border-b border-gray-200">
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => applyTextFormatting({ bold: !textFormat.bold })}
+                    className={`p-2 rounded ${textFormat.bold ? 'bg-blue-100 text-blue-600' : 'text-gray-600 hover:bg-gray-100'}`}
+                    title="Bold"
+                  >
+                    <Bold className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => applyTextFormatting({ italic: !textFormat.italic })}
+                    className={`p-2 rounded ${textFormat.italic ? 'bg-blue-100 text-blue-600' : 'text-gray-600 hover:bg-gray-100'}`}
+                    title="Italic"
+                  >
+                    <Italic className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => applyTextFormatting({ underline: !textFormat.underline })}
+                    className={`p-2 rounded ${textFormat.underline ? 'bg-blue-100 text-blue-600' : 'text-gray-600 hover:bg-gray-100'}`}
+                    title="Underline"
+                  >
+                    <Underline className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <select
+                    value={textFormat.fontFamily}
+                    onChange={(e) => applyTextFormatting({ fontFamily: e.target.value })}
+                    className="px-2 py-1 border border-gray-300 rounded text-sm"
+                  >
+                    {AVAILABLE_FONTS.map(font => (
+                      <option key={font} value={font}>{font}</option>
+                    ))}
+                  </select>
+
+                  <select
+                    value={textFormat.fontSize}
+                    onChange={(e) => applyTextFormatting({ fontSize: parseInt(e.target.value) })}
+                    className="px-2 py-1 border border-gray-300 rounded text-sm"
+                  >
+                    {[8, 10, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48].map(size => (
+                      <option key={size} value={size}>{size}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1">
+                    <Palette className="w-4 h-4 text-gray-600" />
+                    <input
+                      type="color"
+                      value={textFormat.color}
+                      onChange={(e) => applyTextFormatting({ color: e.target.value })}
+                      className="w-8 h-8 border border-gray-300 rounded cursor-pointer"
+                      title="Text Color"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-1">
+                    <Highlighter className="w-4 h-4 text-gray-600" />
+                    <input
+                      type="color"
+                      value={textFormat.highlight === 'transparent' ? '#ffffff' : textFormat.highlight}
+                      onChange={(e) => applyTextFormatting({ highlight: e.target.value })}
+                      className="w-8 h-8 border border-gray-300 rounded cursor-pointer"
+                      title="Highlight Color"
+                    />
+                  </div>
+                </div>
+
+                <button
+                  onClick={duplicateElement}
+                  className="flex items-center gap-1 px-3 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                  title="Duplicate Element"
+                >
+                  <Copy className="w-4 h-4" />
+                  Duplicate
+                </button>
+              </div>
+            )}
+
             {/* Main Editor Area */}
             <div className="flex flex-1 overflow-hidden">
               {/* Left Sidebar - Tools */}
@@ -1499,6 +2109,9 @@ const PDFEditor = () => {
                   <Type className="w-5 h-5" />
                 </button>
 
+                {/* Annotation Tools */}
+                <div className="border-t border-gray-300 my-2 w-full"></div>
+
                 <button
                   onClick={() => setActiveTool("draw")}
                   className={`p-3 rounded-lg ${
@@ -1507,6 +2120,36 @@ const PDFEditor = () => {
                   title="Draw"
                 >
                   <PenTool className="w-5 h-5" />
+                </button>
+
+                <button
+                  onClick={() => setActiveTool("highlight")}
+                  className={`p-3 rounded-lg ${
+                    activeTool === "highlight" ? "bg-blue-100 text-blue-600" : "text-gray-600 hover:bg-gray-200"
+                  }`}
+                  title="Highlight"
+                >
+                  <Highlighter className="w-5 h-5" />
+                </button>
+
+                <button
+                  onClick={() => setActiveTool("underline")}
+                  className={`p-3 rounded-lg ${
+                    activeTool === "underline" ? "bg-blue-100 text-blue-600" : "text-gray-600 hover:bg-gray-200"
+                  }`}
+                  title="Underline"
+                >
+                  <Underline className="w-5 h-5" />
+                </button>
+
+                <button
+                  onClick={() => setActiveTool("strikeout")}
+                  className={`p-3 rounded-lg ${
+                    activeTool === "strikeout" ? "bg-blue-100 text-blue-600" : "text-gray-600 hover:bg-gray-200"
+                  }`}
+                  title="Strikeout"
+                >
+                  <Strikethrough className="w-5 h-5" />
                 </button>
 
                 <div className="border-t border-gray-300 my-2 w-full"></div>
@@ -1584,13 +2227,17 @@ const PDFEditor = () => {
                   <canvas
                     ref={drawingCanvasRef}
                     className="absolute top-0 left-0"
+                    onMouseDown={startDrawing}
+                    onMouseMove={draw}
+                    onMouseUp={stopDrawing}
+                    onMouseLeave={stopDrawing}
                   />
                 </div>
               </div>
 
-              {/* Right Sidebar - Add Elements */}
+              {/* Right Sidebar - Colors and Properties */}
               <div className="w-80 bg-white border-l border-gray-200 p-4">
-                <h3 className="font-semibold text-gray-700 mb-4">Add Elements</h3>
+                <h3 className="font-semibold text-gray-700 mb-4">Properties</h3>
                 
                 {/* Active Tool Info */}
                 <div className="mb-4 p-3 bg-blue-50 rounded-lg">
@@ -1604,35 +2251,60 @@ const PDFEditor = () => {
                   )}
                 </div>
 
-                {/* Signature Tool */}
-                <div className="mb-6">
-                  <h4 className="text-sm font-medium text-gray-600 mb-2">Signature</h4>
-                  <button
-                    onClick={() => setShowSignaturePopup(true)}
-                    className="w-full px-4 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 mb-2"
-                  >
-                    Draw Signature
-                  </button>
-                  <div className="flex gap-2">
+                {/* Color Palettes */}
+                <div className="space-y-4">
+                  {/* Annotation Colors */}
+                  <div>
+                    <h4 className="text-sm font-medium text-gray-600 mb-2">Annotation Color</h4>
+                    <div className="grid grid-cols-5 gap-2">
+                      {['#FF0000', '#00FF00', '#0000FF', '#FFFF00', '#FF00FF', '#00FFFF', '#000000', '#FFFFFF', '#FFA500', '#800080'].map(color => (
+                        <button
+                          key={color}
+                          onClick={() => setAnnotationColor(color)}
+                          className={`w-8 h-8 rounded border-2 ${
+                            annotationColor === color ? 'border-gray-800' : 'border-gray-300'
+                          }`}
+                          style={{ backgroundColor: color }}
+                          title={color}
+                        />
+                      ))}
+                    </div>
                     <input
-                      type="text"
-                      value={signature}
-                      onChange={(e) => setSignature(e.target.value)}
-                      placeholder="Text signature"
-                      className="flex-1 px-3 py-2 border border-gray-300 rounded text-sm"
+                      type="color"
+                      value={annotationColor}
+                      onChange={(e) => setAnnotationColor(e.target.value)}
+                      className="w-full mt-2 h-8 border border-gray-300 rounded cursor-pointer"
                     />
-                    <button
-                      onClick={addTextSignature}
-                      className="px-3 py-2 bg-green-600 text-white rounded text-sm hover:bg-green-700"
-                    >
-                      Add
-                    </button>
+                  </div>
+
+                  {/* Shape Colors */}
+                  <div>
+                    <h4 className="text-sm font-medium text-gray-600 mb-2">Shape Color</h4>
+                    <div className="grid grid-cols-5 gap-2">
+                      {['#000000', '#FF0000', '#00FF00', '#0000FF', '#FFFF00', '#FF00FF', '#00FFFF', '#FFA500', '#800080', '#A52A2A'].map(color => (
+                        <button
+                          key={color}
+                          onClick={() => setShapeColor(color)}
+                          className={`w-8 h-8 rounded border-2 ${
+                            shapeColor === color ? 'border-gray-800' : 'border-gray-300'
+                          }`}
+                          style={{ backgroundColor: color }}
+                          title={color}
+                        />
+                      ))}
+                    </div>
+                    <input
+                      type="color"
+                      value={shapeColor}
+                      onChange={(e) => setShapeColor(e.target.value)}
+                      className="w-full mt-2 h-8 border border-gray-300 rounded cursor-pointer"
+                    />
                   </div>
                 </div>
 
-                {/* Quick Shapes */}
-                <div className="mb-6">
-                  <h4 className="text-sm font-medium text-gray-600 mb-2">Quick Shapes</h4>
+                {/* Quick Actions */}
+                <div className="mt-6">
+                  <h4 className="text-sm font-medium text-gray-600 mb-2">Quick Actions</h4>
                   <div className="grid grid-cols-2 gap-2">
                     <button
                       onClick={() => addElement('rectangle')}
@@ -1670,6 +2342,7 @@ const PDFEditor = () => {
                     <li>• Drag elements to move them</li>
                     <li>• Use corners to resize elements</li>
                     <li>• Double-click text boxes to edit</li>
+                    <li>• Use Ctrl+Z/Ctrl+Y for undo/redo</li>
                     <li>• Save edits before exporting</li>
                   </ul>
                 </div>
