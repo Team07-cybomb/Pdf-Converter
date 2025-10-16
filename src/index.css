@@ -81,3 +81,69 @@
       );
   }
 }
+
+/* Add this to your global CSS file */
+@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&display=swap');
+
+/* Ensure system fonts are available */
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+}
+
+/* PDF text overlay styles */
+.text-overlay {
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-kerning: normal;
+}
+
+/* User element styles */
+.user-element {
+  box-sizing: border-box;
+}
+
+/* Resize handle styles */
+.resize-handle {
+  pointer-events: all;
+}
+
+.resize-handle:hover {
+  background-color: #007bff !important;
+}
+
+/* Canvas container styles */
+.pdf-canvas {
+  box-sizing: border-box;
+}
+
+/* Ensure proper font loading */
+@font-face {
+  font-family: 'Arial';
+  font-style: normal;
+  font-weight: normal;
+}
+
+@font-face {
+  font-family: 'Helvetica';
+  font-style: normal;
+  font-weight: normal;
+}
+
+@font-face {
+  font-family: 'Times New Roman';
+  font-style: normal;
+  font-weight: normal;
+}
+
+@font-face {
+  font-family: 'Courier New';
+  font-style: normal;
+  font-weight: normal;
+}
