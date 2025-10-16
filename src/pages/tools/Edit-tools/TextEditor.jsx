@@ -33,8 +33,7 @@ import {
   RotateCw,
 } from "lucide-react";
 
-const API_BASE_URL = 'http://localhost:5000';
-
+const API_URL = import.meta.env.VITE_API_URL;
 // Import all available fonts from your lib/fonts directory
 const AVAILABLE_FONTS = [
   'Arial', 'Helvetica', 'Times New Roman', 'Courier New', 
@@ -155,7 +154,7 @@ const PDFEditor = () => {
         });
       }, 500);
 
-      const response = await fetch(`${API_BASE_URL}/api/tools/pdf-editor/upload`, {
+      const response = await fetch(`${API_URL}/api/tools/pdf-editor/upload`, {
         method: 'POST',
         body: formData,
       });
@@ -200,7 +199,7 @@ const PDFEditor = () => {
   // Load saved edits from session
   const loadSavedEdits = async (sessionId) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/tools/pdf-editor/get-edits`, {
+      const response = await fetch(`${API_URL}/api/tools/pdf-editor/get-edits`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -278,7 +277,7 @@ const PDFEditor = () => {
 
     // Add background image
     const backgroundImg = document.createElement('img');
-    backgroundImg.src = `${API_BASE_URL}/api/tools/pdf-editor/background/${sessionId}/page-${currentPage}.png`;
+    backgroundImg.src = `${API_URL}/api/tools/pdf-editor/background/${sessionId}/page-${currentPage}.png`;
     backgroundImg.style.position = 'absolute';
     backgroundImg.style.top = '0';
     backgroundImg.style.left = '0';
@@ -874,7 +873,7 @@ const PDFEditor = () => {
   // Save text edits to backend
   const saveTextEdit = async (elementId, newContent) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/tools/pdf-editor/update-text`, {
+      const response = await fetch(`${API_URL}/api/tools/pdf-editor/update-text`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1347,7 +1346,7 @@ const PDFEditor = () => {
       console.log('Canvas data captured, sending to server...');
       
       // Export with canvas data only (no original PDF merging)
-      const response = await fetch(`${API_BASE_URL}/api/tools/pdf-editor/export`, {
+      const response = await fetch(`${API_URL}/api/tools/pdf-editor/export`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1406,7 +1405,7 @@ const PDFEditor = () => {
       // Update state with current edits
       setEdits(currentEdits);
 
-      const response = await fetch(`${API_BASE_URL}/api/tools/pdf-editor/apply-edits`, {
+      const response = await fetch(`${API_URL}/api/tools/pdf-editor/apply-edits`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
