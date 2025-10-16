@@ -24,6 +24,52 @@ import {
 
 const API_BASE_URL = 'http://localhost:5000';
 
+// Font pre-loader component
+const FontPreloader = () => {
+  const [fontsLoaded, setFontsLoaded] = useState(false);
+
+  useEffect(() => {
+    const loadFonts = async () => {
+      const fontFamilies = [
+        'Arial, sans-serif',
+        'Helvetica, sans-serif',
+        'Times New Roman, serif',
+        'Courier New, monospace',
+        'Georgia, serif',
+        'Verdana, sans-serif'
+      ];
+
+      // Pre-load fonts by creating hidden elements
+      const loadPromises = fontFamilies.map(fontFamily => {
+        return new Promise((resolve) => {
+          const div = document.createElement('div');
+          div.innerHTML = 'Font Load Test';
+          div.style.position = 'absolute';
+          div.style.left = '-9999px';
+          div.style.top = '-9999px';
+          div.style.fontFamily = fontFamily;
+          div.style.fontSize = '16px';
+          div.style.opacity = '0';
+          document.body.appendChild(div);
+          
+          // Force font rendering
+          setTimeout(() => {
+            document.body.removeChild(div);
+            resolve();
+          }, 100);
+        });
+      });
+
+      await Promise.all(loadPromises);
+      setFontsLoaded(true);
+    };
+
+    loadFonts();
+  }, []);
+
+  return null;
+};
+
 const PDFEditor = () => {
   const [status, setStatus] = useState("upload");
   const [currentPage, setCurrentPage] = useState(1);
@@ -158,12 +204,13 @@ const PDFEditor = () => {
     // Clear canvas
     canvas.innerHTML = '';
 
-    // Set canvas dimensions
+    // Set canvas dimensions exactly as the PDF page
     canvas.style.width = `${pageStructure.width}px`;
     canvas.style.height = `${pageStructure.height}px`;
     canvas.style.position = 'relative';
     canvas.style.background = 'white';
-    canvas.style.border = '1px solid #ccc';
+    canvas.style.overflow = 'hidden'; // Prevent scrolling
+    canvas.style.boxSizing = 'border-box';
 
     // Add background image
     const backgroundImg = document.createElement('img');
@@ -175,6 +222,7 @@ const PDFEditor = () => {
     backgroundImg.style.height = '100%';
     backgroundImg.style.pointerEvents = 'none';
     backgroundImg.style.zIndex = '1';
+    backgroundImg.style.objectFit = 'contain';
     canvas.appendChild(backgroundImg);
 
     // Add editable text overlays
@@ -185,38 +233,15 @@ const PDFEditor = () => {
       });
     }
 
-    // Add user-created elements (shapes, images, signatures)
+    // Add user-created elements
     const pageElements = userElements[currentPage] || [];
     pageElements.forEach((element, index) => {
       const elementDiv = createUserElement(element);
       canvas.appendChild(elementDiv);
     });
 
-    // Initialize drawing canvas
+    // Initialize drawing canvas with exact dimensions
     initDrawingCanvas();
-  };
-
-  // Initialize drawing canvas for freehand drawing
-  const initDrawingCanvas = () => {
-    if (!canvasRef.current || !drawingCanvasRef.current) return;
-
-    const canvas = canvasRef.current;
-    const drawingCanvas = drawingCanvasRef.current;
-
-    drawingCanvas.style.position = 'absolute';
-    drawingCanvas.style.top = '0';
-    drawingCanvas.style.left = '0';
-    drawingCanvas.style.width = '100%';
-    drawingCanvas.style.height = '100%';
-    drawingCanvas.style.zIndex = '20';
-    drawingCanvas.style.pointerEvents = activeTool === 'draw' ? 'auto' : 'none';
-    drawingCanvas.style.cursor = activeTool === 'draw' ? 'crosshair' : 'default';
-
-    const ctx = drawingCanvas.getContext('2d');
-    ctx.strokeStyle = '#000000';
-    ctx.lineWidth = 2;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
   };
 
   // Create editable text overlay
@@ -236,6 +261,7 @@ const PDFEditor = () => {
     div.style.zIndex = '10';
     div.style.background = 'transparent';
     div.style.border = 'none';
+    div.style.boxSizing = 'border-box';
 
     const style = textElement.style;
     div.style.fontSize = `${style.fontSize}px`;
@@ -247,6 +273,8 @@ const PDFEditor = () => {
     div.style.whiteSpace = style.whiteSpace;
     div.style.pointerEvents = 'auto';
     div.style.cursor = 'text';
+    div.style.padding = '0';
+    div.style.margin = '0';
 
     const editedContent = edits[textElement.id];
     div.textContent = editedContent || textElement.content;
@@ -256,10 +284,14 @@ const PDFEditor = () => {
 
     div.addEventListener('focus', () => {
       setSelectedElement(textElement);
+      div.style.background = 'rgba(255, 255, 0, 0.2)';
+      div.style.border = '1px dashed #666';
     });
 
     div.addEventListener('blur', () => {
       saveTextEdit(textElement.id, div.textContent);
+      div.style.background = 'transparent';
+      div.style.border = 'none';
     });
 
     div.addEventListener('input', () => {
@@ -287,6 +319,7 @@ const PDFEditor = () => {
     div.style.zIndex = '15';
     div.style.pointerEvents = 'auto';
     div.style.cursor = 'move';
+    div.style.boxSizing = 'border-box';
 
     switch (element.type) {
       case 'rectangle':
@@ -314,16 +347,20 @@ const PDFEditor = () => {
       case 'signature':
         div.style.width = `${element.width}px`;
         div.style.height = `${element.height}px`;
-        div.style.background = `url(${element.src}) no-repeat center center`;
-        div.style.backgroundSize = 'contain';
+        if (element.src) {
+          div.style.background = `url(${element.src}) no-repeat center center`;
+          div.style.backgroundSize = 'contain';
+        }
         div.style.border = '1px dashed #ccc';
         break;
       
       case 'image':
         div.style.width = `${element.width}px`;
         div.style.height = `${element.height}px`;
-        div.style.background = `url(${element.src}) no-repeat center center`;
-        div.style.backgroundSize = 'contain';
+        if (element.src) {
+          div.style.background = `url(${element.src}) no-repeat center center`;
+          div.style.backgroundSize = 'contain';
+        }
         div.style.border = '1px dashed #ccc';
         break;
       
@@ -335,6 +372,7 @@ const PDFEditor = () => {
         div.style.border = '1px dashed #ccc';
         div.style.minWidth = '50px';
         div.style.minHeight = '20px';
+        div.style.fontFamily = element.fontFamily || 'Arial, sans-serif';
         div.textContent = element.text || 'Click to edit';
         break;
     }
@@ -366,6 +404,35 @@ const PDFEditor = () => {
     }
 
     return div;
+  };
+
+  // Initialize drawing canvas
+  const initDrawingCanvas = () => {
+    if (!canvasRef.current || !drawingCanvasRef.current) return;
+
+    const canvas = canvasRef.current;
+    const drawingCanvas = drawingCanvasRef.current;
+    const pageStructure = pdfStructure.pages[currentPage - 1];
+
+    if (!pageStructure) return;
+
+    drawingCanvas.width = pageStructure.width;
+    drawingCanvas.height = pageStructure.height;
+
+    drawingCanvas.style.position = 'absolute';
+    drawingCanvas.style.top = '0';
+    drawingCanvas.style.left = '0';
+    drawingCanvas.style.width = '100%';
+    drawingCanvas.style.height = '100%';
+    drawingCanvas.style.zIndex = '20';
+    drawingCanvas.style.pointerEvents = activeTool === 'draw' ? 'auto' : 'none';
+    drawingCanvas.style.cursor = activeTool === 'draw' ? 'crosshair' : 'default';
+
+    const ctx = drawingCanvas.getContext('2d');
+    ctx.strokeStyle = '#000000';
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
   };
 
   // Add resize handles to elements
@@ -529,7 +596,8 @@ const PDFEditor = () => {
           text: 'New Text',
           fontSize: 16,
           width: 100,
-          height: 30
+          height: 30,
+          fontFamily: 'Arial, sans-serif'
         });
         break;
       case 'rectangle':
@@ -616,6 +684,384 @@ const PDFEditor = () => {
   const addElement = (type, options = {}) => {
     // Set active tool to the element type so user can click to place it
     setActiveTool(type);
+  };
+
+  // Enhanced canvas capture with better font handling
+  const captureAllPagesAsCanvas = async () => {
+    const canvasData = {};
+    const originalPage = currentPage;
+    
+    // Create a temporary canvas for rendering
+    const tempCanvas = document.createElement('canvas');
+    const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
+    
+    // Set higher DPI for better quality
+    const scaleFactor = 2; // 2x resolution for better text quality
+    
+    for (let pageNum = 1; pageNum <= totalPages; pageNum++) {
+      setCurrentPage(pageNum);
+      
+      // Wait for page to render
+      await new Promise(resolve => setTimeout(resolve, 200));
+      
+      const canvasContainer = canvasRef.current;
+      if (!canvasContainer) continue;
+      
+      const pageStructure = pdfStructure.pages[pageNum - 1];
+      if (!pageStructure) continue;
+      
+      // Set high-resolution canvas
+      tempCanvas.width = pageStructure.width * scaleFactor;
+      tempCanvas.height = pageStructure.height * scaleFactor;
+      
+      // Clear and set white background
+      tempCtx.fillStyle = 'white';
+      tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+      
+      // Scale context for high DPI
+      tempCtx.save();
+      tempCtx.scale(scaleFactor, scaleFactor);
+      
+      // Capture with enhanced font handling
+      await capturePageElements(tempCtx, canvasContainer, pageStructure, scaleFactor);
+      
+      tempCtx.restore();
+      
+      // Store as high-quality PNG
+      canvasData[pageNum] = {
+        dataURL: tempCanvas.toDataURL('image/png', 0.9),
+        width: pageStructure.width,
+        height: pageStructure.height
+      };
+      
+      console.log(`Captured page ${pageNum} at ${scaleFactor}x resolution`);
+    }
+    
+    setCurrentPage(originalPage);
+    return canvasData;
+  };
+
+  // Enhanced element capture with font preservation
+  const capturePageElements = async (ctx, container, pageStructure, scaleFactor = 1) => {
+    // Draw background image first
+    await drawBackgroundImage(ctx, pageStructure, scaleFactor);
+    
+    // Draw all DOM elements in correct order
+    await drawAllDOMElements(ctx, container, scaleFactor);
+  };
+
+  // Draw background with high quality
+  const drawBackgroundImage = async (ctx, pageStructure, scaleFactor) => {
+    return new Promise((resolve) => {
+      const bgImg = new Image();
+      bgImg.crossOrigin = 'anonymous';
+      bgImg.onload = () => {
+        // Draw background at high quality
+        ctx.drawImage(bgImg, 0, 0, pageStructure.width, pageStructure.height);
+        resolve();
+      };
+      bgImg.onerror = () => {
+        console.log('Background image failed to load, using white background');
+        ctx.fillStyle = 'white';
+        ctx.fillRect(0, 0, pageStructure.width, pageStructure.height);
+        resolve();
+      };
+      bgImg.src = `${API_BASE_URL}${pageStructure.backgroundImage}?t=${Date.now()}`;
+    });
+  };
+
+  // Draw all DOM elements with proper styling
+  const drawAllDOMElements = async (ctx, container, scaleFactor) => {
+    // Get all elements in the correct z-order
+    const allElements = Array.from(container.querySelectorAll('*'))
+      .filter(el => {
+        const style = window.getComputedStyle(el);
+        return style.display !== 'none' && style.visibility !== 'hidden';
+      })
+      .sort((a, b) => {
+        const aZ = parseInt(window.getComputedStyle(a).zIndex) || 0;
+        const bZ = parseInt(window.getComputedStyle(b).zIndex) || 0;
+        return aZ - bZ;
+      });
+
+    for (const element of allElements) {
+      await drawElementToCanvas(ctx, element, container, scaleFactor);
+    }
+  };
+
+  // Enhanced element drawing with font support
+  const drawElementToCanvas = async (ctx, element, container, scaleFactor) => {
+    const rect = element.getBoundingClientRect();
+    const containerRect = container.getBoundingClientRect();
+    
+    const x = rect.left - containerRect.left;
+    const y = rect.top - containerRect.top;
+    const width = rect.width;
+    const height = rect.height;
+
+    // Skip if element is not visible or has no size
+    if (width === 0 || height === 0) return;
+
+    ctx.save();
+
+    try {
+      const computedStyle = window.getComputedStyle(element);
+      
+      // Handle different element types
+      if (element.classList.contains('text-overlay')) {
+        await drawTextElement(ctx, element, x, y, width, height, computedStyle);
+      } 
+      else if (element.classList.contains('user-element')) {
+        await drawUserElementToCanvas(ctx, element, x, y, width, height, computedStyle);
+      }
+      // Add other element types as needed
+      
+    } catch (error) {
+      console.error('Error drawing element:', error);
+    }
+
+    ctx.restore();
+  };
+
+  // Enhanced text drawing with font fallbacks
+  const drawTextElement = async (ctx, element, x, y, width, height, computedStyle) => {
+    const textContent = element.textContent || '';
+    if (!textContent.trim()) return;
+
+    // Set up text styling
+    ctx.font = getCanvasFontString(computedStyle);
+    ctx.fillStyle = computedStyle.color || '#000000';
+    ctx.textAlign = getCanvasTextAlign(computedStyle.textAlign);
+    ctx.textBaseline = 'top';
+    
+    // Handle line breaks
+    const lines = textContent.split('\n');
+    const lineHeight = parseInt(computedStyle.lineHeight) || parseInt(computedStyle.fontSize);
+    const fontSize = parseInt(computedStyle.fontSize);
+    
+    // Draw each line
+    lines.forEach((line, index) => {
+      if (line.trim()) {
+        ctx.fillText(line, x, y + (index * lineHeight));
+      }
+    });
+  };
+
+  // Convert CSS font to canvas font string
+  const getCanvasFontString = (computedStyle) => {
+    const fontWeight = computedStyle.fontWeight || 'normal';
+    const fontSize = computedStyle.fontSize || '16px';
+    const fontFamily = computedStyle.fontFamily || 'Arial, sans-serif';
+    
+    // Map CSS font weights to canvas-friendly weights
+    const weightMap = {
+      'bold': 'bold',
+      'bolder': 'bold',
+      'lighter': 'lighter',
+      '100': '100',
+      '200': '200',
+      '300': '300',
+      '400': 'normal',
+      '500': '500',
+      '600': '600',
+      '700': 'bold',
+      '800': '800',
+      '900': '900'
+    };
+    
+    const canvasWeight = weightMap[fontWeight] || 'normal';
+    const canvasStyle = computedStyle.fontStyle || 'normal';
+    
+    return `${canvasStyle} ${canvasWeight} ${fontSize} ${fontFamily}`;
+  };
+
+  // Convert CSS text-align to canvas textAlign
+  const getCanvasTextAlign = (cssTextAlign) => {
+    const alignMap = {
+      'left': 'left',
+      'right': 'right',
+      'center': 'center',
+      'justify': 'left' // canvas doesn't support justify
+    };
+    return alignMap[cssTextAlign] || 'left';
+  };
+
+  // Enhanced user element drawing
+  const drawUserElementToCanvas = async (ctx, element, x, y, width, height, computedStyle) => {
+    const type = element.getAttribute('data-type');
+    
+    switch (type) {
+      case 'text':
+        // Draw user text elements
+        const textContent = element.textContent || 'Text';
+        ctx.font = getCanvasFontString(computedStyle);
+        ctx.fillStyle = computedStyle.color || '#000000';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'top';
+        ctx.fillText(textContent, x, y);
+        break;
+        
+      case 'rectangle':
+        ctx.strokeStyle = computedStyle.borderColor || '#000000';
+        ctx.lineWidth = parseInt(computedStyle.borderWidth) || 2;
+        ctx.strokeRect(x, y, width, height);
+        break;
+        
+      case 'circle':
+        ctx.strokeStyle = computedStyle.borderColor || '#000000';
+        ctx.lineWidth = parseInt(computedStyle.borderWidth) || 2;
+        ctx.beginPath();
+        ctx.arc(x + width/2, y + height/2, Math.min(width, height)/2, 0, 2 * Math.PI);
+        ctx.stroke();
+        break;
+        
+      case 'line':
+        ctx.strokeStyle = computedStyle.backgroundColor || '#000000';
+        ctx.lineWidth = parseInt(computedStyle.height) || 2;
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(x + width, y);
+        ctx.stroke();
+        break;
+        
+      case 'signature':
+      case 'image':
+        // Handle images and signatures
+        await drawElementBackgroundImage(ctx, element, x, y, width, height);
+        break;
+    }
+  };
+
+  // Draw background images for elements
+  const drawElementBackgroundImage = (ctx, element, x, y, width, height) => {
+    return new Promise((resolve) => {
+      const bgImage = window.getComputedStyle(element).backgroundImage;
+      if (bgImage && bgImage !== 'none') {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => {
+          ctx.drawImage(img, x, y, width, height);
+          resolve();
+        };
+        img.onerror = () => {
+          console.log('Element background image failed to load');
+          resolve();
+        };
+        
+        // Extract URL from background-image property
+        const urlMatch = bgImage.match(/url\(["']?(.*?)["']?\)/);
+        if (urlMatch) {
+          img.src = urlMatch[1];
+        } else {
+          resolve();
+        }
+      } else {
+        resolve();
+      }
+    });
+  };
+
+  // Enhanced export with canvas capture
+  const handleExport = async () => {
+    try {
+      setIsProcessing(true);
+      
+      // First capture all canvas data for each page
+      const canvasData = await captureAllPagesAsCanvas();
+      
+      // Then export with canvas data
+      const response = await fetch(`${API_BASE_URL}/api/tools/pdf-editor/export`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          sessionId,
+          canvasData // Send canvas renders for each page
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Export failed');
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `edited-document-${sessionId}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+
+      alert('PDF exported successfully!');
+
+    } catch (error) {
+      console.error('Export error:', error);
+      alert('Error exporting PDF: ' + error.message);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Apply all edits and save to backend
+  const handleApplyEdits = async () => {
+    try {
+      setIsProcessing(true);
+      
+      // Collect all current text edits from the DOM
+      const textOverlays = document.querySelectorAll('.text-overlay.editable');
+      const currentEdits = { ...edits };
+      
+      textOverlays.forEach(overlay => {
+        const elementId = overlay.id;
+        const currentContent = overlay.textContent || '';
+        if (elementId && currentContent !== overlay.getAttribute('data-original')) {
+          currentEdits[elementId] = currentContent;
+        }
+      });
+
+      // Update state with current edits
+      setEdits(currentEdits);
+
+      const response = await fetch(`${API_BASE_URL}/api/tools/pdf-editor/apply-edits`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          sessionId,
+          edits: {
+            text: currentEdits,
+            elements: userElements
+          }
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to apply edits');
+      }
+
+      const result = await response.json();
+      
+      if (result.success) {
+        alert('All edits applied and saved successfully!');
+        console.log('Edits saved:', {
+          textEdits: Object.keys(currentEdits).length,
+          userElements: Object.keys(userElements).length
+        });
+      } else {
+        throw new Error(result.error || 'Failed to apply edits');
+      }
+
+    } catch (error) {
+      console.error('Apply edits error:', error);
+      alert('Error applying edits: ' + error.message);
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   // Signature drawing functions
@@ -769,159 +1215,6 @@ const PDFEditor = () => {
     }
   };
 
-  // Apply all edits and save to backend
-const handleApplyEdits = async () => {
-  try {
-    setIsProcessing(true);
-    
-    // Collect all current text edits from the DOM
-    const textOverlays = document.querySelectorAll('.text-overlay.editable');
-    const currentEdits = { ...edits };
-    
-    textOverlays.forEach(overlay => {
-      const elementId = overlay.id;
-      const currentContent = overlay.textContent || '';
-      if (elementId && currentContent !== overlay.getAttribute('data-original')) {
-        currentEdits[elementId] = currentContent;
-      }
-    });
-
-    // Update state with current edits
-    setEdits(currentEdits);
-
-    const response = await fetch(`${API_BASE_URL}/api/tools/pdf-editor/apply-edits`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        sessionId,
-        edits: {
-          text: currentEdits,
-          elements: userElements
-        }
-      })
-    });
-
-    if (!response.ok) {
-      throw new Error('Failed to apply edits');
-    }
-
-    const result = await response.json();
-    
-    if (result.success) {
-      alert('All edits applied and saved successfully!');
-      console.log('Edits saved:', {
-        textEdits: Object.keys(currentEdits).length,
-        userElements: Object.keys(userElements).length
-      });
-    } else {
-      throw new Error(result.error || 'Failed to apply edits');
-    }
-
-  } catch (error) {
-    console.error('Apply edits error:', error);
-    alert('Error applying edits: ' + error.message);
-  } finally {
-    setIsProcessing(false);
-  }
-};
-
-  // Export PDF with all elements
- // In TextEditor.jsx - Enhanced handleExport
-const handleExport = async () => {
-  try {
-    setIsProcessing(true);
-    
-    // First apply all edits
-    await handleApplyEdits();
-
-    // Get canvas data for drawings
-    const drawingCanvas = drawingCanvasRef.current;
-    let drawingDataURL = null;
-    if (drawingCanvas && activeTool === 'draw') {
-      drawingDataURL = drawingCanvas.toDataURL('image/png');
-    }
-
-    // Clean edits data - remove any undefined values
-    const cleanedEdits = {};
-    if (edits) {
-      Object.keys(edits).forEach(key => {
-        if (edits[key] !== undefined && edits[key] !== null) {
-          cleanedEdits[key] = String(edits[key]); // Ensure string values
-        }
-      });
-    }
-
-    // Clean user elements data
-    const cleanedUserElements = {};
-    if (userElements) {
-      Object.keys(userElements).forEach(pageKey => {
-        if (userElements[pageKey] && Array.isArray(userElements[pageKey])) {
-          cleanedUserElements[pageKey] = userElements[pageKey].map(element => ({
-            ...element,
-            text: element.text ? String(element.text) : undefined,
-            content: element.content ? String(element.content) : undefined
-          })).filter(element => element !== null && element !== undefined);
-        }
-      });
-    }
-
-    // Prepare all elements including drawings
-    const exportData = {
-      sessionId,
-      edits: {
-        text: cleanedEdits,
-        elements: cleanedUserElements,
-        drawings: drawingDataURL ? {
-          page: currentPage,
-          dataURL: drawingDataURL,
-          width: drawingCanvas.width,
-          height: drawingCanvas.height
-        } : null
-      }
-    };
-
-    console.log('Exporting data:', {
-      textEdits: Object.keys(cleanedEdits).length,
-      userElements: Object.keys(cleanedUserElements).length,
-      hasDrawings: !!drawingDataURL
-    });
-
-    // Then export
-    const response = await fetch(`${API_BASE_URL}/api/tools/pdf-editor/export`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(exportData)
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.error || 'Export failed');
-    }
-
-    const blob = await response.blob();
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `edited-document-${sessionId}.pdf`;
-    document.body.appendChild(a);
-    a.click();
-    window.URL.revokeObjectURL(url);
-    document.body.removeChild(a);
-
-    alert('PDF exported successfully!');
-
-  } catch (error) {
-    console.error('Export error:', error);
-    alert('Error exporting PDF: ' + error.message);
-  } finally {
-    setIsProcessing(false);
-  }
-};
-
   // Reset editor
   const handleReset = () => {
     setStatus("upload");
@@ -976,6 +1269,9 @@ const handleExport = async () => {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Add font preloader */}
+      <FontPreloader />
+      
       {/* Header */}
       <div className="bg-white shadow-sm border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -1287,12 +1583,6 @@ const handleExport = async () => {
                   />
                   <canvas
                     ref={drawingCanvasRef}
-                    width={pdfStructure.pages[currentPage - 1]?.width || 800}
-                    height={pdfStructure.pages[currentPage - 1]?.height || 600}
-                    onMouseDown={startDrawing}
-                    onMouseMove={draw}
-                    onMouseUp={stopDrawing}
-                    onMouseLeave={stopDrawing}
                     className="absolute top-0 left-0"
                   />
                 </div>

@@ -21,7 +21,9 @@ class EditController {
     this.downloadEdited = this.downloadEdited.bind(this);
     this.renderPageToImage = this.renderPageToImage.bind(this);
     this.serveBackgroundImage = this.serveBackgroundImage.bind(this);
-    this.getEdits = this.getEdits.bind(this); // Add this line
+    this.getEdits = this.getEdits.bind(this);
+    this.embedCanvasAsPage = this.embedCanvasAsPage.bind(this);
+    this.addOriginalPageAsImage = this.addOriginalPageAsImage.bind(this);
   }
 
   // Upload PDF and extract structure
@@ -58,6 +60,10 @@ class EditController {
       const pdfUint8Array = new Uint8Array(req.file.buffer);
       const pdfStructure = await this.extractPDFStructure(pdfUint8Array, sessionId);
       
+      // Save structure to file
+      const structureFile = path.join(sessionDir, 'structure.json');
+      await fs.writeFile(structureFile, JSON.stringify(pdfStructure, null, 2));
+
       // Render each page to image for background
       for (let pageNum = 1; pageNum <= pdfStructure.pages.length; pageNum++) {
         await this.renderPageToImage(pdfUint8Array, pageNum, sessionId);
@@ -419,313 +425,162 @@ class EditController {
     }
   }
 
-  // Export to PDF with edits
-async exportPDF(req, res) {
-  try {
-    const { sessionId, edits } = req.body;
-    
-    if (!sessionId) {
-      return res.status(400).json({
+  // Export to PDF with canvas rendering
+  async exportPDF(req, res) {
+    try {
+      const { sessionId, canvasData } = req.body;
+      
+      if (!sessionId) {
+        return res.status(400).json({
+          success: false,
+          error: 'Session ID missing'
+        });
+      }
+
+      const sessionDir = path.join(__dirname, '../../../uploads/sessions', sessionId);
+      const exportFilePath = path.join(sessionDir, 'exported.pdf');
+
+      // Create a new PDF document
+      const pdfDoc = await PDFDocument.create();
+      
+      // Load structure to get page dimensions
+      const structureFile = path.join(sessionDir, 'structure.json');
+      let structure = null;
+      try {
+        const structureData = await fs.readFile(structureFile, 'utf8');
+        structure = JSON.parse(structureData);
+      } catch (error) {
+        console.log('No structure file found');
+        return res.status(400).json({
+          success: false,
+          error: 'PDF structure not found'
+        });
+      }
+
+      console.log(`Exporting ${structure.pages.length} pages with canvas data`);
+
+      // Process each page
+      for (let pageNum = 1; pageNum <= structure.pages.length; pageNum++) {
+        const pageIndex = pageNum - 1;
+        const pageStructure = structure.pages[pageIndex];
+        
+        if (!pageStructure) continue;
+
+        // Create a page with the same dimensions as original
+        const page = pdfDoc.addPage([pageStructure.width, pageStructure.height]);
+        
+        // Check if we have canvas data for this page
+        const pageCanvasData = canvasData && canvasData[pageNum];
+        
+        if (pageCanvasData && pageCanvasData.dataURL) {
+          // Embed the canvas image as the entire page
+          await this.embedCanvasAsPage(page, pageCanvasData.dataURL, pageStructure.width, pageStructure.height);
+          console.log(`Page ${pageNum}: Used canvas data`);
+        } else {
+          // Fallback: use original PDF page as image
+          await this.addOriginalPageAsImage(pdfDoc, page, sessionId, pageNum, pageStructure);
+          console.log(`Page ${pageNum}: Used original page as fallback`);
+        }
+      }
+
+      const pdfBytes = await pdfDoc.save();
+      await fs.writeFile(exportFilePath, pdfBytes);
+
+      console.log('PDF exported successfully with canvas rendering');
+      
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', 'attachment; filename=edited-document.pdf');
+      res.send(Buffer.from(pdfBytes));
+
+    } catch (error) {
+      console.error('Export PDF error:', error);
+      res.status(500).json({
         success: false,
-        error: 'Session ID missing'
+        error: error.message
       });
     }
-
-    const sessionDir = path.join(__dirname, '../../../uploads/sessions', sessionId);
-    const originalFilePath = path.join(sessionDir, 'original.pdf');
-    const exportFilePath = path.join(sessionDir, 'exported.pdf');
-
-    // Read original PDF
-    const originalPdfBytes = await fs.readFile(originalFilePath);
-    const pdfDoc = await PDFDocument.load(originalPdfBytes);
-    
-    // Embed fonts
-    const helveticaFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
-    const helveticaBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-    
-    const pages = pdfDoc.getPages();
-
-    // Apply text edits to existing PDF text elements
-    if (edits && edits.text && typeof edits.text === 'object') {
-      console.log('Applying text edits:', Object.keys(edits.text).length);
-      
-      for (const [elementId, newContent] of Object.entries(edits.text)) {
-        // Skip undefined or null content
-        if (newContent === undefined || newContent === null) {
-          console.log(`Skipping undefined content for element: ${elementId}`);
-          continue;
-        }
-
-        // Ensure content is a string
-        const contentString = String(newContent);
-        
-        if (elementId.startsWith('text-') && contentString.trim()) {
-          const parts = elementId.split('-');
-          if (parts.length < 3) {
-            console.log(`Invalid element ID format: ${elementId}`);
-            continue;
-          }
-          
-          const pageNum = parseInt(parts[1]);
-          const elementIndex = parseInt(parts[2]);
-          
-          if (isNaN(pageNum) || isNaN(elementIndex)) {
-            console.log(`Invalid page number or element index: ${elementId}`);
-            continue;
-          }
-          
-          const pageIndex = pageNum - 1;
-          
-          if (pages[pageIndex]) {
-            const page = pages[pageIndex];
-            const { width, height } = page.getSize();
-            
-            // Get the original text element position from structure
-            const structureFile = path.join(sessionDir, 'structure.json');
-            let structure = null;
-            try {
-              const structureData = await fs.readFile(structureFile, 'utf8');
-              structure = JSON.parse(structureData);
-            } catch (error) {
-              console.log('No structure file found, using default positions');
-            }
-            
-            let x = 50;
-            let y = height - 100;
-            
-            // If we have structure data, use the exact coordinates
-            if (structure && structure.pages && structure.pages[pageIndex]) {
-              const pageStructure = structure.pages[pageIndex];
-              if (pageStructure.elements && pageStructure.elements.text && 
-                  pageStructure.elements.text[elementIndex]) {
-                const textElement = pageStructure.elements.text[elementIndex];
-                x = textElement.position.x;
-                y = height - textElement.position.y - textElement.position.height;
-                
-                console.log(`Drawing text at: x=${x}, y=${y}, content: "${contentString.substring(0, 20)}..."`);
-              }
-            }
-            
-            try {
-              // Draw the edited text
-              page.drawText(contentString, {
-                x: x,
-                y: y,
-                size: 12,
-                font: helveticaFont,
-                color: rgb(0, 0, 0),
-              });
-            } catch (drawError) {
-              console.error(`Error drawing text for element ${elementId}:`, drawError);
-            }
-          }
-        }
-      }
-    }
-
-    // Apply user elements (shapes, images, signatures, drawings)
-    if (edits && edits.elements && typeof edits.elements === 'object') {
-      console.log('Applying user elements');
-      
-      for (const [pageNum, pageElements] of Object.entries(edits.elements)) {
-        const pageIndex = parseInt(pageNum) - 1;
-        
-        if (isNaN(pageIndex) || pageIndex < 0 || pageIndex >= pages.length) {
-          console.log(`Invalid page index: ${pageIndex} for pageNum: ${pageNum}`);
-          continue;
-        }
-        
-        if (pages[pageIndex] && Array.isArray(pageElements)) {
-          const page = pages[pageIndex];
-          const { width, height } = page.getSize();
-          
-          pageElements.forEach((element, index) => {
-            try {
-              // Validate element has required properties
-              if (!element || typeof element !== 'object') {
-                console.log(`Invalid element at index ${index} on page ${pageNum}`);
-                return;
-              }
-              
-              switch (element.type) {
-                case 'text':
-                  // User-added text boxes
-                  const textContent = element.text || 'Text';
-                  if (textContent && typeof textContent === 'string') {
-                    page.drawText(textContent, {
-                      x: element.x || 0,
-                      y: height - (element.y || 0) - (element.height || 20),
-                      size: element.fontSize || 16,
-                      font: helveticaFont,
-                      color: rgb(0, 0, 0),
-                    });
-                  }
-                  break;
-                  
-                case 'signature':
-                  // Handle signature images
-                  if (element.src && element.src.startsWith('data:image')) {
-                    this.embedImageInPDF(page, element.src, element.x || 0, 
-                      height - (element.y || 0) - (element.height || 50), 
-                      element.width || 100, element.height || 50);
-                  } else {
-                    // Text signature
-                    const signatureText = element.text || element.content || 'Signature';
-                    if (signatureText && typeof signatureText === 'string') {
-                      page.drawText(signatureText, {
-                        x: element.x || 0,
-                        y: height - (element.y || 0) - (element.height || 20),
-                        size: element.fontSize || 16,
-                        font: helveticaFont,
-                        color: rgb(0, 0, 0),
-                      });
-                    }
-                  }
-                  break;
-                  
-                case 'rectangle':
-                  if (element.width && element.height) {
-                    page.drawRectangle({
-                      x: element.x || 0,
-                      y: height - (element.y || 0) - (element.height || 0),
-                      width: element.width,
-                      height: element.height,
-                      borderColor: rgb(0, 0, 0),
-                      borderWidth: 2,
-                    });
-                  }
-                  break;
-                  
-                case 'circle':
-                  if (element.width && element.height) {
-                    page.drawEllipse({
-                      x: (element.x || 0) + element.width / 2,
-                      y: height - (element.y || 0) - element.height / 2,
-                      xScale: element.width / 2,
-                      yScale: element.height / 2,
-                      borderColor: rgb(0, 0, 0),
-                      borderWidth: 2,
-                    });
-                  }
-                  break;
-                  
-                case 'line':
-                  if (element.width) {
-                    page.drawLine({
-                      start: { x: element.x || 0, y: height - (element.y || 0) },
-                      end: { x: (element.x || 0) + element.width, y: height - (element.y || 0) },
-                      color: rgb(0, 0, 0),
-                      thickness: 2,
-                    });
-                  }
-                  break;
-                  
-                case 'image':
-                case 'drawing':
-                  // Embed images
-                  if (element.src && element.src.startsWith('data:image')) {
-                    this.embedImageInPDF(page, element.src, element.x || 0, 
-                      height - (element.y || 0) - (element.height || 0), 
-                      element.width || 100, element.height || 100);
-                  }
-                  break;
-                  
-                default:
-                  console.log(`Unknown element type: ${element.type}`);
-              }
-            } catch (elementError) {
-              console.error(`Error drawing element ${element?.type} at index ${index}:`, elementError);
-            }
-          });
-        }
-      }
-    }
-
-    // Handle drawings from canvas
-    if (edits.drawings && edits.drawings.dataURL) {
-      const drawingPageIndex = (edits.drawings.page || 1) - 1;
-      if (pages[drawingPageIndex]) {
-        const page = pages[drawingPageIndex];
-        await this.embedImageInPDF(
-          page, 
-          edits.drawings.dataURL, 
-          0, 
-          0, 
-          edits.drawings.width || 800, 
-          edits.drawings.height || 600
-        );
-      }
-    }
-
-    const pdfBytes = await pdfDoc.save();
-    
-    // Save exported file
-    await fs.writeFile(exportFilePath, pdfBytes);
-
-    console.log('PDF exported successfully');
-    
-    // Send PDF as response
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', 'attachment; filename=edited-document.pdf');
-    res.send(Buffer.from(pdfBytes));
-
-  } catch (error) {
-    console.error('Export PDF error:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
   }
-}
 
-// Enhanced embedImageInPDF method with better error handling
-async embedImageInPDF(page, dataURL, x, y, width, height) {
-  try {
-    // Validate parameters
-    if (!dataURL || !dataURL.startsWith('data:image')) {
-      console.warn('Invalid dataURL provided for image embedding');
-      return;
-    }
-
-    // Extract base64 data from dataURL
-    const base64Data = dataURL.split(',')[1];
-    if (!base64Data) {
-      console.warn('No base64 data found in dataURL');
-      return;
-    }
-
-    const imageBuffer = Buffer.from(base64Data, 'base64');
-    
-    // Determine image type and embed
-    let image;
-    const pdfDoc = page.doc;
-    
+  // Embed canvas as entire page
+  async embedCanvasAsPage(page, dataURL, width, height) {
     try {
+      if (!dataURL || !dataURL.startsWith('data:image')) {
+        console.warn('Invalid canvas data URL');
+        return;
+      }
+
+      const base64Data = dataURL.split(',')[1];
+      if (!base64Data) {
+        console.warn('No base64 data in canvas data URL');
+        return;
+      }
+
+      const imageBuffer = Buffer.from(base64Data, 'base64');
+      const pdfDoc = page.doc;
+      
+      let image;
       if (dataURL.includes('image/png')) {
         image = await pdfDoc.embedPng(imageBuffer);
       } else if (dataURL.includes('image/jpeg') || dataURL.includes('image/jpg')) {
         image = await pdfDoc.embedJpg(imageBuffer);
       } else {
-        console.warn('Unsupported image type:', dataURL.split(';')[0]);
+        console.warn('Unsupported image type for canvas');
         return;
       }
       
-      // Draw image on page
+      // Draw the canvas image as the entire page background
       page.drawImage(image, {
-        x: x || 0,
-        y: y || 0,
-        width: width || 100,
-        height: height || 100,
+        x: 0,
+        y: 0,
+        width: width,
+        height: height,
       });
       
-    } catch (embedError) {
-      console.error('Error embedding image:', embedError);
+    } catch (error) {
+      console.error('Error embedding canvas as page:', error);
     }
-    
-  } catch (error) {
-    console.error('Error in embedImageInPDF:', error);
   }
-}
+
+  // Fallback: Use original page as image
+  async addOriginalPageAsImage(pdfDoc, page, sessionId, pageNum, pageStructure) {
+    try {
+      const sessionDir = path.join(__dirname, '../../../uploads/sessions', sessionId);
+      const backgroundPath = path.join(sessionDir, `page-${pageNum}.png`);
+      
+      if (await fs.access(backgroundPath).then(() => true).catch(() => false)) {
+        const backgroundBuffer = await fs.readFile(backgroundPath);
+        const backgroundImage = await pdfDoc.embedPng(backgroundBuffer);
+        page.drawImage(backgroundImage, {
+          x: 0,
+          y: 0,
+          width: pageStructure.width,
+          height: pageStructure.height,
+        });
+        console.log(`Used background image for page ${pageNum}`);
+      } else {
+        console.log(`No background image available for page ${pageNum}`);
+        // Draw white background as fallback
+        page.drawRectangle({
+          x: 0,
+          y: 0,
+          width: pageStructure.width,
+          height: pageStructure.height,
+          color: rgb(1, 1, 1),
+        });
+      }
+    } catch (error) {
+      console.log('Could not load background image for page', pageNum, error.message);
+      // Draw white background as final fallback
+      page.drawRectangle({
+        x: 0,
+        y: 0,
+        width: pageStructure.width,
+        height: pageStructure.height,
+        color: rgb(1, 1, 1),
+      });
+    }
+  }
+
   // Apply edits
   async applyEdits(req, res) {
     try {

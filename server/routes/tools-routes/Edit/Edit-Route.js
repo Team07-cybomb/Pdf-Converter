@@ -22,7 +22,6 @@ router.get('/test', (req, res) => {
 // Upload PDF and extract structure
 router.post('/upload', upload.single('pdfFile'), EditController.uploadPDF);
 
-
 // Get PDF structure
 router.get('/structure/:sessionId', EditController.getStructure);
 
@@ -30,9 +29,9 @@ router.get('/structure/:sessionId', EditController.getStructure);
 router.post('/update-text', EditController.updateText);
 
 // Get saved edits
-router.post('/get-edits', EditController.getEdits); // Add this line
+router.post('/get-edits', EditController.getEdits);
 
-// Export PDF
+// Export PDF with canvas data
 router.post('/export', EditController.exportPDF);
 
 // Apply edits
