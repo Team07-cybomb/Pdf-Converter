@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Check, FileText, Zap, Crown, Building2, Download, Lock, Users, Star } from 'lucide-react';
+import { Check, FileText, Zap, Crown, Building2, Download, Lock, Users, Star, Globe } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
@@ -9,12 +9,46 @@ const BillingPage = () => {
   const { user, updateUser } = useAuth();
   const [billingCycle, setBillingCycle] = useState('annual');
   const [expandedFaq, setExpandedFaq] = useState(null);
+  const [currency, setCurrency] = useState('USD'); // 'USD' or 'INR'
+
+  // Currency conversion rates (you might want to fetch this from an API)
+  const exchangeRate = 83.5; // 1 USD = 83.5 INR
+
+  const formatPrice = (usdPrice, isCustom = false) => {
+    if (isCustom) return 'Custom';
+    
+    if (currency === 'INR') {
+      const inrPrice = Math.round(usdPrice * exchangeRate);
+      return `₹${inrPrice.toLocaleString('en-IN')}`;
+    }
+    return `$${usdPrice}`;
+  };
+
+  const formatPeriod = (usdPrice, period, isCustom = false) => {
+    if (isCustom) return 'Tailored to your needs';
+    
+    if (currency === 'INR') {
+      const inrPrice = Math.round(usdPrice * exchangeRate);
+      const annualPrice = Math.round(usdPrice * 12 * exchangeRate);
+      
+      if (billingCycle === 'annual') {
+        return `Billed annually (₹${annualPrice.toLocaleString('en-IN')})`;
+      }
+      return `Billed monthly`;
+    }
+    
+    if (billingCycle === 'annual') {
+      const annualPrice = usdPrice * 12;
+      return `Billed annually ($${annualPrice})`;
+    }
+    return `Billed monthly`;
+  };
 
   const pricingPlans = [
     {
       id: 'free',
       name: 'Free',
-      price: '$0',
+      price: formatPrice(0),
       period: 'forever',
       icon: Zap,
       color: 'from-green-500 to-emerald-600',
@@ -31,13 +65,14 @@ const BillingPage = () => {
       ],
       ctaText: 'Get Started Free',
       popular: false,
-      limit: 10
+      limit: 10,
+      usdPrice: 0
     },
     {
       id: 'starter',
       name: 'Starter',
-      price: billingCycle === 'annual' ? '$9/month' : '$12/month',
-      period: billingCycle === 'annual' ? 'Billed annually ($108)' : 'Billed monthly',
+      price: formatPrice(billingCycle === 'annual' ? 9 : 12),
+      period: formatPeriod(billingCycle === 'annual' ? 9 : 12, billingCycle),
       icon: FileText,
       color: 'from-blue-500 to-cyan-600',
       description: 'Perfect for individual users and students',
@@ -54,13 +89,14 @@ const BillingPage = () => {
       ],
       ctaText: 'Start 14-Day Trial',
       popular: false,
-      limit: 50
+      limit: 50,
+      usdPrice: billingCycle === 'annual' ? 9 : 12
     },
     {
       id: 'professional',
       name: 'Professional',
-      price: billingCycle === 'annual' ? '$29/month' : '$39/month',
-      period: billingCycle === 'annual' ? 'Billed annually ($348)' : 'Billed monthly',
+      price: formatPrice(billingCycle === 'annual' ? 29 : 39),
+      period: formatPeriod(billingCycle === 'annual' ? 29 : 39, billingCycle),
       icon: Crown,
       color: 'from-purple-500 to-pink-500',
       popular: true,
@@ -79,12 +115,13 @@ const BillingPage = () => {
         'Priority processing'
       ],
       ctaText: 'Start Free Trial',
-      limit: 500
+      limit: 500,
+      usdPrice: billingCycle === 'annual' ? 29 : 39
     },
     {
       id: 'enterprise',
       name: 'Enterprise',
-      price: 'Custom',
+      price: formatPrice(0, true),
       period: 'Tailored to your needs',
       icon: Building2,
       color: 'from-indigo-600 to-purple-600',
@@ -105,7 +142,8 @@ const BillingPage = () => {
         'Custom workflows'
       ],
       ctaText: 'Contact Sales',
-      limit: 'Unlimited'
+      limit: 'Unlimited',
+      usdPrice: 0
     }
   ];
 
@@ -200,8 +238,8 @@ const BillingPage = () => {
       answer: 'Yes, you can cancel your subscription at any time. When you cancel, you\'ll continue to have access to your plan features until the end of your billing period. You can always revert to our free plan.'
     },
     {
-      question: 'Do you offer discounts for annual billing?',
-      answer: 'Yes, we offer a 25% discount when you choose annual billing instead of monthly payments across all paid plans. The free plan remains completely free forever.'
+      question: `Do you offer discounts for annual billing?`,
+      answer: `Yes, we offer a 25% discount when you choose annual billing instead of monthly payments across all paid plans. The free plan remains completely free forever.`
     },
     {
       question: 'What happens if I exceed my monthly conversion limit?',
@@ -214,6 +252,10 @@ const BillingPage = () => {
     {
       question: 'Can I upgrade from free to paid plan?',
       answer: 'Absolutely! You can upgrade anytime. When you upgrade, your conversion limits reset immediately and you get access to all the new features of your chosen plan.'
+    },
+    {
+      question: `Do you support Indian Rupee (INR) payments?`,
+      answer: `Yes! You can view prices in INR and pay in Indian Rupees. We support all major Indian payment methods including UPI, Net Banking, and credit/debit cards.`
     }
   ];
 
@@ -278,26 +320,60 @@ const BillingPage = () => {
           Start free, upgrade as you grow. No credit card required to begin.
         </p>
 
-        {/* Billing Toggle */}
-        <div className="flex items-center justify-center gap-4 mt-6">
-          <span className={`font-semibold ${billingCycle === 'monthly' ? 'text-gray-900' : 'text-gray-500'}`}>
-            Monthly
-          </span>
-          <label className="relative inline-flex items-center cursor-pointer">
-            <input
-              type="checkbox"
-              className="sr-only peer"
-              checked={billingCycle === 'annual'}
-              onChange={() => setBillingCycle(billingCycle === 'annual' ? 'monthly' : 'annual')}
-            />
-            <div className="w-14 h-7 bg-blue-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-blue-600"></div>
-          </label>
-          <span className={`font-semibold flex items-center gap-2 ${billingCycle === 'annual' ? 'text-gray-900' : 'text-gray-500'}`}>
-            Annual
-            <span className="bg-green-500 text-white px-2 py-1 rounded-full text-xs">
-              Save 25%
+        {/* Currency Toggle */}
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-6 mt-8">
+          {/* Billing Toggle */}
+          <div className="flex items-center gap-4 bg-white/80 backdrop-blur-sm px-4 py-2 rounded-full border">
+            <span className={`font-semibold ${billingCycle === 'monthly' ? 'text-gray-900' : 'text-gray-500'}`}>
+              Monthly
             </span>
-          </span>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                className="sr-only peer"
+                checked={billingCycle === 'annual'}
+                onChange={() => setBillingCycle(billingCycle === 'annual' ? 'monthly' : 'annual')}
+              />
+              <div className="w-12 h-6 bg-blue-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+            </label>
+            <span className={`font-semibold flex items-center gap-2 ${billingCycle === 'annual' ? 'text-gray-900' : 'text-gray-500'}`}>
+              Annual
+              <span className="bg-green-500 text-white px-2 py-1 rounded-full text-xs">
+                Save 25%
+              </span>
+            </span>
+          </div>
+
+          {/* Currency Toggle */}
+          <div className="flex items-center gap-4 bg-white/80 backdrop-blur-sm px-4 py-2 rounded-full border">
+            <Globe className="h-4 w-4 text-gray-600" />
+            <span className={`font-semibold ${currency === 'USD' ? 'text-gray-900' : 'text-gray-500'}`}>
+              USD
+            </span>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                className="sr-only peer"
+                checked={currency === 'INR'}
+                onChange={() => setCurrency(currency === 'INR' ? 'USD' : 'INR')}
+              />
+              <div className="w-12 h-6 bg-blue-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+            </label>
+            <span className={`font-semibold ${currency === 'INR' ? 'text-gray-900' : 'text-gray-500'}`}>
+              INR
+            </span>
+          </div>
+        </div>
+
+        {/* Exchange Rate Notice */}
+        <div className="mt-4">
+          <p className="text-sm text-gray-600">
+            {currency === 'INR' ? (
+              <>Exchange rate: 1 USD ≈ ₹{exchangeRate}. Prices in INR include all applicable taxes.</>
+            ) : (
+              <>All prices in USD. Switch to INR for local currency pricing.</>
+            )}
+          </p>
         </div>
       </motion.div>
 
@@ -342,7 +418,11 @@ const BillingPage = () => {
               <h3 className="text-xl font-bold text-gray-900 mb-2">{plan.name}</h3>
               <div className="mb-2">
                 <span className="text-3xl font-bold text-gray-900">{plan.price}</span>
-                {!isFreePlan && <span className="text-gray-500 text-lg ml-1">/mo</span>}
+                {!isFreePlan && plan.id !== 'enterprise' && (
+                  <span className="text-gray-500 text-lg ml-1">
+                    {currency === 'INR' ? '/mo' : '/mo'}
+                  </span>
+                )}
               </div>
               <p className="text-gray-600 text-sm mb-4">{plan.period}</p>
               <p className="text-gray-700 text-sm mb-4">{plan.description}</p>
@@ -351,6 +431,11 @@ const BillingPage = () => {
                 <div className="text-sm font-semibold text-gray-700">
                   {typeof plan.limit === 'number' ? `${plan.limit} conversions/month` : 'Unlimited conversions'}
                 </div>
+                {plan.id !== 'free' && plan.id !== 'enterprise' && currency === 'INR' && (
+                  <div className="text-xs text-gray-500 mt-1">
+                    ≈ {formatPrice(plan.usdPrice / (billingCycle === 'annual' ? 12 : 1))}/conversion
+                  </div>
+                )}
               </div>
 
               <ul className="space-y-2 mb-6 flex-grow">
@@ -377,6 +462,22 @@ const BillingPage = () => {
               >
                 {isCurrentPlan ? 'Current Plan' : plan.ctaText}
               </Button>
+
+              {plan.id !== 'free' && plan.id !== 'enterprise' && (
+                <div className="text-center mt-3">
+                  <p className="text-xs text-gray-500">
+                    {billingCycle === 'annual' ? (
+                      currency === 'INR' ? (
+                        `Equivalent to ${formatPrice(plan.usdPrice / 12)}/month`
+                      ) : (
+                        `Equivalent to $${(plan.usdPrice / 12).toFixed(2)}/month`
+                      )
+                    ) : (
+                      'Cancel anytime'
+                    )}
+                  </p>
+                </div>
+              )}
             </motion.div>
           );
         })}
@@ -536,14 +637,23 @@ const BillingPage = () => {
           Start with our free plan today. No credit card required. Upgrade anytime.
         </p>
         <div className="flex flex-col sm:flex-row gap-3 justify-center">
-          <Button className="bg-white text-blue-600 hover:bg-blue-50 px-6 py-2 font-semibold rounded-full">
+          <Button 
+            onClick={() => handleUpgrade('free')}
+            className="bg-white text-blue-600 hover:bg-blue-50 px-6 py-2 font-semibold rounded-full"
+          >
             Start Free Plan
           </Button>
-          <Button className="bg-transparent border-2 border-white text-white hover:bg-white hover:text-blue-600 px-6 py-2 font-semibold rounded-full">
+          <Button 
+            onClick={() => handleUpgrade('professional')}
+            className="bg-transparent border-2 border-white text-white hover:bg-white hover:text-blue-600 px-6 py-2 font-semibold rounded-full"
+          >
             Try Professional Free
           </Button>
         </div>
-        <p className="text-blue-200 text-xs mt-3">14-day free trial on paid plans • No commitment</p>
+        <p className="text-blue-200 text-xs mt-3">
+          {currency === 'INR' ? 'Prices in INR include taxes • ' : ''}
+          14-day free trial on paid plans • No commitment
+        </p>
       </motion.div>
     </div>
   );
