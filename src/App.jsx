@@ -8,7 +8,7 @@ import {
 } from "react-router-dom";
 import { Helmet } from "react-helmet";
 import { Toaster } from "@/components/ui/toaster";
-
+ 
 // 🌐 Site Components
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
@@ -29,25 +29,26 @@ import TermsPage from "@/components/TermsPage";
 import CookiesPage from "@/components/CookiesPage";
 import ScrollToTop from "./components/ScrollToTop";
 import EditTools from "./pages/tools/EditTools";
-
+ 
 // 👤 User Dashboard (from components folder)
 import UserDashboard from "@/components/Dashboard";
-
+ 
 // 🛠️ Admin Pages (from pages/admin folder)
 import AdminLoginPage from "@/components/AdminLoginPage";
 import AdminDashboard from "@/pages/admin/Dashboard";
 import Users from "@/pages/admin/Users";
 import Settings from "@/pages/admin/Settings";
-
+ 
 // 🔐 Auth & Route Guards
 import { AuthProvider } from "@/contexts/AuthContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import AdminProtectedRoute from "@/components/AdminProtectedRoute";
-
+ 
 // ✨ Animations
 import { AnimatePresence } from "framer-motion";
 import ContactUser from "./pages/admin/Contact";
-
+import RefundPolicy from "./components/Refund-policy";
+ 
 // ❌ 404 Page
 const NotFoundPage = () => (
   <div className="flex flex-col items-center justify-center min-h-screen">
@@ -56,10 +57,10 @@ const NotFoundPage = () => (
     <a href="/" className="text-purple-600 hover:underline">Go back home</a>
   </div>
 );
-
+ 
 function AppContent() {
   const location = useLocation();
-
+ 
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <Helmet>
@@ -86,7 +87,7 @@ function AppContent() {
                 : <Navigate to="/admin/login" replace />
             }
           />
-
+ 
           <Route
             path="/admin/login"
             element={
@@ -95,7 +96,7 @@ function AppContent() {
                 : <AdminLoginPage />
             }
           />
-
+ 
           <Route
             path="/admin/dashboard"
             element={
@@ -104,7 +105,7 @@ function AppContent() {
               </AdminProtectedRoute>
             }
           />
-
+ 
           <Route
             path="/admin/users"
             element={
@@ -113,7 +114,7 @@ function AppContent() {
               </AdminProtectedRoute>
             }
           />
-
+ 
           <Route
             path="/admin/settings"
             element={
@@ -130,9 +131,9 @@ function AppContent() {
               </AdminProtectedRoute>
             }
           />
-
+ 
          
-
+ 
           {/* ================= PUBLIC & USER ROUTES ================= */}
           <Route
             path="/*"
@@ -153,9 +154,11 @@ function AppContent() {
                     <Route path="/press" element={<PressPage />} />
                     <Route path="/security" element={<SecurityPage />} />
                     <Route path="/privacy" element={<PrivacyPolicyPage />} />
+                     <Route path="/refund-policy" element={ <RefundPolicy/>} />
+                   
                     <Route path="/terms" element={<TermsPage />} />
                     <Route path="/cookies" element={<CookiesPage />} />
-                    
+                   
                     {/* Protected User Pages */}
                     <Route
                       path="/dashboard"
@@ -181,10 +184,10 @@ function AppContent() {
                         </ProtectedRoute>
                       }
                     />
-
+ 
                     {/* Not Found */}
                     <Route path="*" element={<NotFoundPage />} />
-                    
+                   
                   </Routes>
                 </main>
                 <Footer />
@@ -193,12 +196,12 @@ function AppContent() {
           />
         </Routes>
       </AnimatePresence>
-
+ 
       <Toaster />
     </div>
   );
 }
-
+ 
 function App() {
   return (
     <Router>
@@ -208,5 +211,7 @@ function App() {
     </Router>
   );
 }
-
+ 
 export default App;
+ 
+ 
