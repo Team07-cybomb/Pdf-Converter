@@ -1,7 +1,7 @@
 import React from "react";
 import { Link } from "react-router-dom";
 import { FileText, Twitter, Linkedin, Facebook } from "lucide-react";
-
+ 
 const Footer = () => {
   const sections = {
     Product: [
@@ -21,9 +21,10 @@ const Footer = () => {
       { name: "Privacy Policy", path: "/privacy" },
       { name: "Terms & Conditions", path: "/terms" },
       { name: "Cookies Policy", path: "/cookies" },
+      { name: "Refund Policy", path: "/refund-policy" },
     ],
   };
-
+ 
   return (
     <footer className="bg-white/50 backdrop-blur-lg border-t border-purple-200/50 text-gray-800">
       <div className="max-w-7xl mx-auto px-6 py-12">
@@ -61,7 +62,7 @@ const Footer = () => {
               </a>
             </div>
           </div>
-
+ 
           {Object.entries(sections).map(([title, links]) => (
             <div key={title}>
               <p className="font-semibold text-gray-900 mb-4">{title}</p>
@@ -80,7 +81,7 @@ const Footer = () => {
             </div>
           ))}
         </div>
-
+ 
         <div className="mt-12 border-t border-gray-200 pt-8 text-center">
           <p className="text-sm text-gray-500">
             &copy; {new Date().getFullYear()} pdfworks. All rights reserved.
@@ -90,5 +91,5 @@ const Footer = () => {
     </footer>
   );
 };
-
+ 
 export default Footer;
