@@ -2,10 +2,10 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { 
+import {
   Merge, Minimize2, FileType, Edit3, Eye, Lock, Star, Cpu
 } from 'lucide-react';
-
+ 
 const HomePage = () => {
   const features = [
     { name: 'Merge & Split', icon: Merge, description: 'Combine or extract PDF pages effortlessly.' },
@@ -15,13 +15,25 @@ const HomePage = () => {
     { name: 'OCR', icon: Eye, description: 'Turn scanned documents into searchable text.' },
     { name: 'Protect', icon: Lock, description: 'Secure your files with passwords and permissions.' },
   ];
-
+ 
   const testimonials = [
     { name: 'Sarah J.', role: 'Marketing Manager', text: 'PDF Pro has become an indispensable tool for our team. The batch processing feature saves us hours of work every week!', avatar: 'https://i.pravatar.cc/150?img=1' },
     { name: 'Mike R.', role: 'Freelance Designer', text: 'The conversion quality is top-notch, especially from PDF to image formats. It\'s fast, reliable, and the UI is a joy to use.', avatar: 'https://i.pravatar.cc/150?img=2' },
     { name: 'Dr. Emily Carter', role: 'University Researcher', text: 'I handle hundreds of research papers. The OCR and annotation tools are a lifesaver for my work. Highly recommended!', avatar: 'https://i.pravatar.cc/150?img=3' },
   ];
-
+const logos = [
+    "https://res.cloudinary.com/duomzq5mm/image/upload/v1761200939/microsoft-5_z1f1q9.svg",
+    "https://res.cloudinary.com/duomzq5mm/image/upload/v1761201009/Zoho-logo_ggtqnk.png",
+    "https://res.cloudinary.com/duomzq5mm/image/upload/v1761201062/aws-2_whii9k.svg",
+    "https://res.cloudinary.com/duomzq5mm/image/upload/v1761201134/djit-trading-DY90WfDK_kbwf1d.png",
+    "https://res.cloudinary.com/dcfjt8shw/image/upload/c_crop,ar_4:3/v1761221135/klmewbshocakvtcys6iv.png",
+    "https://res.cloudinary.com/duomzq5mm/image/upload/v1761200939/microsoft-5_z1f1q9.svg",
+    "https://res.cloudinary.com/duomzq5mm/image/upload/v1761201009/Zoho-logo_ggtqnk.png",
+    "https://res.cloudinary.com/duomzq5mm/image/upload/v1761201062/aws-2_whii9k.svg",
+    "https://res.cloudinary.com/duomzq5mm/image/upload/v1761201134/djit-trading-DY90WfDK_kbwf1d.png",
+    "https://res.cloudinary.com/dcfjt8shw/image/upload/c_crop,ar_4:3/v1761221135/klmewbshocakvtcys6iv.png",
+  ];
+ 
   return (
     <div className="space-y-24 md:space-y-32 overflow-hidden">
       {/* Hero Section */}
@@ -73,7 +85,7 @@ const HomePage = () => {
           </div>
         </motion.div>
       </section>
-
+ 
       {/* Features Section */}
       <section className="max-w-6xl mx-auto">
         <div className="text-center mb-12">
@@ -99,7 +111,7 @@ const HomePage = () => {
           ))}
         </div>
       </section>
-
+ 
       {/* Testimonials Section */}
       <section className="bg-secondary/30 py-20">
         <div className="max-w-6xl mx-auto px-6">
@@ -133,7 +145,84 @@ const HomePage = () => {
           </div>
         </div>
       </section>
-
+     <section className="py-20 bg-gray-50">
+      <style>{`
+        .partnership-heading {
+          text-align: center;
+          font-size: 2.5rem;
+          font-weight: 800;
+          font-family: 'Poppins', sans-serif;
+          background: linear-gradient(to right, #9333EA, #DB2777);
+          -webkit-background-clip: text;
+          color: transparent;
+          display: inline-block;
+          position: relative;
+          margin: 0 auto 40px auto;
+        }
+        .underline {
+          position: absolute;
+          bottom: -10px;
+          left: 50%;
+          transform: translateX(-50%);
+          width: 70px;
+          height: 5px;
+          border-radius: 10px;
+          background: linear-gradient(to right, #9333EA, #DB2777);
+        }
+        .carousel {
+          display: flex;
+          overflow: hidden;
+        }
+        .carousel-track {
+          display: flex;
+          animation: scroll 15s linear infinite;
+        }
+        @keyframes scroll {
+          0% { transform: translateX(0); }
+          100% { transform: translateX(-50%); }
+        }
+        .partner-card {
+          flex: 0 0 auto;
+          background: white;
+          border-radius: 10px;
+          padding: 20px;
+          box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 180px;
+          margin-right: 1rem;
+          margin-top: 10px;
+          margin-bottom: 10px;
+        }
+        .partner-card img {
+          width: 100px;
+          height: auto;
+          object-fit: contain;
+        }
+      `}</style>
+ 
+      {/* Centered Heading */}
+      <div className="text-center">
+        <h2 className="partnership-heading">
+          Our Partners
+          <div className="underline"></div>
+        </h2>
+      </div>
+ 
+      {/* Carousel */}
+      <div className="container mx-auto">
+        <div className="carousel">
+          <div className="carousel-track">
+            {[...logos, ...logos].map((logo, index) => (
+              <div key={index} className="partner-card">
+                <img src={logo} alt={`Partner ${index + 1}`} />
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
       {/* CTA Section */}
       <section className="text-center">
         <div className="max-w-3xl mx-auto">
@@ -153,5 +242,6 @@ const HomePage = () => {
     </div>
   );
 };
-
+ 
 export default HomePage;
+ 
