@@ -578,7 +578,7 @@ const SecurityTools = () => {
             )}
 
             <div className="mt-6 space-y-4">
-              <div className="flex items-center p-3 bg-gray-50 rounded-lg">
+              {/* <div className="flex items-center p-3 bg-gray-50 rounded-lg">
                 <input
                   type="checkbox"
                   id="random-password"
@@ -595,7 +595,7 @@ const SecurityTools = () => {
                 >
                   Use randomly generated password
                 </label>
-              </div>
+              </div> */}
 
               {!useRandomPassword && (
                 <div className="p-3 bg-gray-50 rounded-lg">

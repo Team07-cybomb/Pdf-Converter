@@ -65,7 +65,7 @@ const PressPage = () => {
           <div className="border-t pt-6">
             <h3 className="font-semibold mb-2">Media Contact</h3>
             <p className="text-gray-600">For all media inquiries, please contact:</p>
-            <p className="font-medium">press@pdfpro.com</p>
+            <p className="font-medium">info@pdfworks.in</p>
           </div>
         </motion.div>
       </div>

@@ -64,7 +64,7 @@ const SecurityPage = () => {
         <h2 className="text-2xl font-bold mb-4">Compliance and Best Practices</h2>
         <p className="text-gray-700 space-y-4">
           <span>We are committed to following security best practices and complying with data protection regulations like GDPR and CCPA. Our infrastructure is hosted on secure, top-tier cloud providers that meet rigorous security standards.</span>
-          <span>We conduct regular security audits and vulnerability scans to ensure our platform remains robust against emerging threats. If you discover a security vulnerability, we encourage you to report it to us via our responsible disclosure program at <a href="mailto:security@pdfpro.com" className="text-purple-600">security@pdfpro.com</a>.</span>
+          <span>We conduct regular security audits and vulnerability scans to ensure our platform remains robust against emerging threats. If you discover a security vulnerability, we encourage you to report it to us via our responsible disclosure program at <a href="mailto:info@pdfworks.in" className="text-purple-600">info@pdfworks.in</a>.</span>
         </p>
       </motion.div>
     </div>

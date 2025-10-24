@@ -6,8 +6,8 @@ const Settings = () => {
   const [settings, setSettings] = useState({
     profile: {
       name: 'Admin User',
-      email: 'admin@pdfpro.com',
-      phone: '+1 234 567 8900',
+      email: 'admin@pdfworks.in',
+      phone: '+91 9715092104',
       avatar: ''
     },
     security: {
